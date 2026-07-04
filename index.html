@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evergen Management | Stock Journal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Supabase CDN Integration -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #ffffff; color: #111827; }
+        
+        .pill-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 0.8rem;
+            padding: 0.5rem 2.2rem 0.5rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            outline: none;
+            cursor: pointer;
+            border: 1px solid #f3f4f6;
+            transition: all 0.2s ease;
+        }
+
+        .journal-input { border: none; border-bottom: 2px solid #f3f4f6; padding: 0.75rem 0; width: 100%; outline: none; transition: all 0.3s; font-weight: 600; background: transparent; }
+        .journal-input:focus { border-bottom-color: #6366f1; }
+
+        .nav-pill { border-radius: 9999px; transition: all 0.3s; padding: 8px 24px; cursor: pointer; }
+        .nav-active { background: #111827; color: white; box-shadow: 0 10px 20px -5px rgba(0,0,0,0.1); }
+
+        .status-badge { font-size: 9px; font-weight: 800; text-transform: uppercase; padding: 3px 10px; border-radius: 9999px; letter-spacing: 0.02em; }
+        .status-pending { background-color: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+        .status-partial { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .status-completed { background-color: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="fixed inset-0 z-[200] bg-gray-50 flex items-center justify-center p-6 hidden">
+        <div class="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl p-10 border border-gray-100">
+            <div class="text-center mb-10">
+                <h1 class="text-2xl font-black tracking-tighter uppercase mb-2">Evergen Management</h1>
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Inventory Management System</p>
+            </div>
+            <form onsubmit="handleLogin(event)" class="space-y-6">
+                <div>
+                    <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 ml-1">Username</label>
+                    <input type="text" id="login-user" required class="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4 focus:ring-4 focus:ring-indigo-50 outline-none transition-all">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 ml-1">Password</label>
+                    <input type="password" id="login-pass" required class="w-full bg-gray-50 border border-gray-100 rounded-2xl px-5 py-4 focus:ring-4 focus:ring-indigo-50 outline-none transition-all">
+                </div>
+                <div id="login-error" class="text-xs font-bold text-rose-500 text-center hidden">Incorrect credentials. Please try again.</div>
+                <button type="submit" class="w-full bg-gray-900 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-black transition-all">Access System</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div id="main-app" class="hidden">
+        <nav class="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100">
+            <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+                <h1 class="text-2xl font-black tracking-tighter uppercase leading-none">Evergen Management</h1>
+                <div class="flex items-center gap-6">
+                    <div class="bg-gray-100 p-1 rounded-full flex gap-1">
+                        <div onclick="showView('journal')" id="nav-journal" class="nav-pill nav-active text-[10px] font-black uppercase tracking-widest">Logbook</div>
+                        <div onclick="showView('dashboard')" id="nav-dashboard" class="nav-pill text-gray-400 text-[10px] font-black uppercase tracking-widest">Analytics</div>
+                    </div>
+                    <button onclick="handleLogout()" class="text-[10px] font-black text-gray-400 hover:text-rose-500 uppercase tracking-widest transition-all">Logout</button>
+                </div>
+            </div>
+        </nav>
+
+        <main class="max-w-7xl mx-auto px-6 pt-32 pb-20">
+            <div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-8">
+                <div>
+                    <h2 class="text-5xl font-black tracking-tighter text-gray-900 mb-2" id="view-title">Journal Entry</h2>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="openModal('IN')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 transition-all">+ Stock In</button>
+                    <button onclick="openModal('OUT')" class="bg-rose-500 hover:bg-rose-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-rose-100 transition-all">+ Stock Out</button>
+                </div>
+            </div>
+
+            <div id="stat-grid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-20"></div>
+
+            <div id="view-journal" class="space-y-8 fade-in">
+                <div id="journal-list" class="space-y-6"></div>
+            </div>
+
+            <div id="view-dashboard" class="hidden space-y-24 fade-in">
+                <div class="space-y-12">
+                    <h3 class="text-3xl font-black tracking-tight text-gray-900">Product Variant Movement</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm border-separate border-spacing-x-0">
+                            <thead>
+                                <tr class="text-[10px] uppercase text-gray-400 font-black">
+                                    <th class="py-4 pr-4 border-b border-gray-100">Variant Attributes</th>
+                                    <th class="py-4 px-2 text-emerald-600 border-b border-gray-100 text-center">Comp In</th>
+                                    <th class="py-4 px-2 text-rose-600 border-b border-gray-100 text-center">Comp Out</th>
+                                    <th class="py-4 px-2 text-emerald-500 opacity-40 border-b border-gray-100 text-center">Pend In</th>
+                                    <th class="py-4 px-2 text-rose-500 opacity-40 border-b border-gray-100 text-center">Pend Out</th>
+                                    <th class="py-4 px-4 font-black bg-slate-50/80 rounded-t-xl border-b border-slate-100 text-center text-gray-900">Curr Stock</th>
+                                    <th class="py-4 px-4 text-indigo-600 font-black bg-indigo-50/50 rounded-t-xl border-b border-indigo-100 text-center">Available</th>
+                                </tr>
+                            </thead>
+                            <tbody id="variant-movement-table" class="text-gray-700"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 rounded-[3rem] p-12 text-white relative overflow-hidden shadow-2xl">
+                    <div class="relative z-10">
+                        <div class="flex justify-between items-start mb-10">
+                            <div>
+                                <h3 class="text-2xl font-black tracking-tight">Stock Movement Trend</h3>
+                                <p class="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-1">Moved vs Remaining Monthly Flow</p>
+                            </div>
+                            <div class="flex flex-wrap gap-4 justify-end max-w-xs text-[8px] font-bold uppercase tracking-widest text-gray-400 leading-none">
+                                <div class="flex items-center gap-2"><div class="w-2 h-2 bg-emerald-500 rounded-full"></div>Actual In</div>
+                                <div class="flex items-center gap-2"><div class="w-2 h-2 bg-emerald-500 opacity-50 rounded-full"></div>Rem. In</div>
+                                <div class="flex items-center gap-2"><div class="w-2 h-2 bg-rose-500 rounded-full"></div>Actual Out</div>
+                                <div class="flex items-center gap-2"><div class="w-2 h-2 bg-rose-500 opacity-50 rounded-full"></div>Rem. Out</div>
+                            </div>
+                        </div>
+                        <div class="flex items-end justify-between gap-3 h-64 border-b border-gray-800 pb-2" id="trend-bars"></div>
+                        <div class="flex justify-between mt-4 text-[9px] font-black text-gray-500 uppercase tracking-widest" id="trend-labels"></div>
+                    </div>
+                </div>
+
+                <div id="monthly-variant-grids" class="space-y-16"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MAIN FORM MODAL -->
+    <div id="modal" class="fixed inset-0 z-[100] hidden bg-gray-900/40 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-white rounded-[3rem] w-full max-w-5xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+            <div class="p-10 border-b border-gray-50 flex justify-between items-center">
+                <div>
+                    <span id="m-badge" class="px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">TYPE</span>
+                    <h2 class="text-3xl font-black mt-2 tracking-tight">Batch Creation</h2>
+                </div>
+                <button onclick="closeModal()" class="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center hover:bg-gray-100 transition-all font-bold">✕</button>
+            </div>
+            <form id="entryForm" onsubmit="handleSave(event)" class="overflow-y-auto p-10 flex-1">
+                <input type="hidden" id="edit-id">
+                <input type="hidden" id="entry-type">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-16 p-8 bg-gray-50 rounded-[2rem]">
+                    <div><label class="text-[9px] font-black text-gray-400 uppercase">Date</label><input type="date" id="f-date" required class="journal-input"></div>
+                    <div><label class="text-[9px] font-black text-gray-400 uppercase">Doc #</label><input type="text" id="f-doc" required class="journal-input"></div>
+                    <div><label class="text-[9px] font-black text-gray-400 uppercase">Project</label><input type="text" id="f-project" required class="journal-input"></div>
+                    <div><label class="text-[9px] font-black text-gray-400 uppercase">Customer</label><input type="text" id="f-customer" required class="journal-input"></div>
+                </div>
+                <div id="product-list" class="space-y-12"></div>
+                <button type="button" onclick="addProductRow()" class="w-full mt-10 py-5 border-2 border-dashed border-gray-100 rounded-2xl text-gray-400 text-[10px] font-black uppercase tracking-widest hover:border-indigo-100 transition-all">+ Add Product Item</button>
+                <div class="mt-16 pt-10 border-t border-gray-50 flex justify-end">
+                    <button type="submit" class="w-full md:w-auto px-16 bg-gray-900 text-white py-6 rounded-3xl font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all">Save Batch</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- UPDATE MODAL -->
+    <div id="update-modal" class="fixed inset-0 z-[110] hidden bg-gray-900/60 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-white rounded-[2rem] w-full max-w-sm p-8 shadow-2xl">
+            <h3 class="text-xl font-black mb-1">Update Progress</h3>
+            <p id="update-item-desc" class="text-xs text-gray-400 font-bold uppercase mb-6"></p>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-black text-gray-400 uppercase">Expected: <span id="update-expected-label">0</span></label>
+                    <input type="number" id="update-actual-input" class="journal-input text-2xl py-4" placeholder="0">
+                </div>
+                <div id="update-error" class="text-[10px] font-bold text-rose-500 hidden">Actual cannot exceed expected.</div>
+                <div class="flex gap-2 pt-4">
+                    <button onclick="saveActualUpdate()" class="flex-1 bg-gray-900 text-white py-4 rounded-2xl font-black uppercase text-[10px] hover:bg-black transition-all">Save</button>
+                    <button onclick="closeUpdateModal()" class="flex-1 bg-gray-100 text-gray-500 py-4 rounded-2xl font-black uppercase text-[10px] hover:bg-gray-200 transition-all">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase Client Initialization
+        const supabaseUrl = 'https://oshftyrfxcbrnbrioxwn.supabase.co';
+        const supabaseKey = 'sb_publishable_8F5C0uvXa2zzrtS5V3AYfQ_H0wqCbic';
+        
+        // Define connection using clear global to prevent conflict with the CDN's script block scope
+        const supabaseDb = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        let db = [];
+        let context = null;
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById('login-user').value;
+            const p = document.getElementById('login-pass').value;
+            if(u === 'admin' && p === 'admin123') { sessionStorage.setItem('evergen_auth', 'true'); checkAuth(); }
+            else { document.getElementById('login-error').classList.remove('hidden'); }
+        }
+
+        function handleLogout() { sessionStorage.removeItem('evergen_auth'); checkAuth(); }
+
+        function checkAuth() {
+            const isAuth = sessionStorage.getItem('evergen_auth');
+            if(isAuth === 'true') {
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('main-app').classList.remove('hidden');
+                updateAll();
+            } else {
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('main-app').classList.add('hidden');
+            }
+        }
+
+        async function updateAll() {
+            await fetchAllFromSupabase();
+        }
+
+        function updateAllUI() {
+            renderStats();
+            renderJournal();
+            renderVariantMovement();
+            renderTrendChart();
+            renderMonthlyVariantInsights();
+        }
+
+        async function fetchAllFromSupabase() {
+            const supabase = supabaseDb; // Local reference
+            try {
+                // Attempt direct join query first
+                const { data, error } = await supabase
+                    .from('batches')
+                    .select(`
+                        *,
+                        batch_items (*)
+                    `)
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    console.error('Supabase join query failed. Proceeding with split-query fallback...', error);
+                    throw error;
+                }
+
+                mapFetchedData(data);
+
+            } catch (jointErr) {
+                // Execute split-query fallback if join fails
+                try {
+                    console.log('Initiating split-query fallback paths...');
+
+                    // 1. Select all batches
+                    const { data: batchesData, error: batchesError } = await supabase
+                        .from('batches')
+                        .select('*')
+                        .order('created_at', { ascending: false });
+
+                    if (batchesError) {
+                        console.error('Split query batches fetch failed:', batchesError);
+                        throw batchesError;
+                    }
+
+                    // 2. Select all batch_items
+                    const { data: itemsData, error: itemsError } = await supabase
+                        .from('batch_items')
+                        .select('*');
+
+                    if (itemsError) {
+                        console.error('Split query batch_items fetch failed:', itemsError);
+                        throw itemsError;
+                    }
+
+                    // 3. Match items in JavaScript using strict equality: item.batch_id === batch.id
+                    const fallbackData = (batchesData || []).map(batch => {
+                        const matchedItems = (itemsData || []).filter(item => item.batch_id === batch.id);
+                        return {
+                            ...batch,
+                            batch_items: matchedItems
+                        };
+                    });
+
+                    mapFetchedData(fallbackData);
+
+                } catch (fallbackErr) {
+                    console.error('Data retrieval processes failed:', fallbackErr);
+                    alert('Connection failure: ' + (fallbackErr.message || 'Please check browser developer console for details.'));
+                }
+            }
+        }
+
+        // Handles mapping the schema values to application state variables
+        function mapFetchedData(rawBatches) {
+            db = (rawBatches || []).map(b => {
+                let formattedDate = '';
+                if (b.created_at) {
+                    try {
+                        formattedDate = b.created_at.substring(0, 10);
+                    } catch (e) {
+                        formattedDate = b.created_at;
+                    }
+                }
+                return {
+                    id: b.id,
+                    type: b.movement_type,
+                    date: formattedDate,
+                    doc: b.document_no,
+                    project: b.project,
+                    customer: b.customer,
+                    products: (b.batch_items || []).map(bi => ({
+                        id: bi.id,
+                        type: bi.type,
+                        pattern: bi.pattern,
+                        color: bi.color,
+                        gloss: bi.gloss,
+                        thick: bi['thickness (mm)'], // Map exact column names containing spaces and parentheses
+                        size: bi['size (cm)'],       // Map exact column names containing spaces and parentheses
+                        reqQty: bi.expected_qty,
+                        movQty: bi.actual_qty,
+                        note: bi.note
+                    }))
+                };
+            });
+
+            updateAllUI();
+        }
+
+        function getStatus(req, mov) {
+            const r = Number(req), m = Number(mov);
+            if (m <= 0) return 'Pending';
+            if (m >= r) return 'Completed';
+            return 'Partial';
+        }
+
+        function showView(v) {
+            document.getElementById('view-journal').classList.toggle('hidden', v !== 'journal');
+            document.getElementById('view-dashboard').classList.toggle('hidden', v !== 'dashboard');
+            document.getElementById('nav-journal').className = `nav-pill ${v === 'journal' ? 'nav-active' : 'text-gray-400'} text-[10px] font-black uppercase tracking-widest`;
+            document.getElementById('nav-dashboard').className = `nav-pill ${v === 'dashboard' ? 'nav-active' : 'text-gray-400'} text-[10px] font-black uppercase tracking-widest`;
+            document.getElementById('view-title').innerText = v === 'journal' ? 'Journal Entry' : 'Analytics Center';
+            if (v === 'dashboard') updateAll();
+        }
+
+        function openModal(type, editId = null) {
+            const container = document.getElementById('product-list');
+            document.getElementById('entryForm').reset();
+            container.innerHTML = '';
+            document.getElementById('edit-id').value = editId || '';
+            document.getElementById('entry-type').value = type;
+            document.getElementById('m-badge').innerText = `STOCK ${type}`;
+            document.getElementById('m-badge').className = `px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${type === 'IN' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`;
+            if(editId) {
+                const e = db.find(x => x.id == editId);
+                document.getElementById('f-date').value = e.date;
+                document.getElementById('f-doc').value = e.doc;
+                document.getElementById('f-project').value = e.project;
+                document.getElementById('f-customer').value = e.customer;
+                e.products.forEach(p => addProductRow(p));
+            } else { addProductRow(); }
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+
+        function addProductRow(data = {}) {
+            const id = Math.random().toString(36).substr(2, 9);
+            const html = `<div class="product-item p-5 bg-white border border-gray-100 rounded-2xl" id="p-${id}">
+                <div class="flex justify-between items-center mb-4 text-[8px] font-black text-indigo-400 uppercase">Item Specs<button type="button" onclick="document.getElementById('p-${id}').remove()" class="text-rose-400">Remove</button></div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    ${inp('Type', 'type', data.type)} ${inp('Pattern', 'pattern', data.pattern)}
+                    ${inp('Color', 'color', data.color)} ${inp('Gloss', 'gloss', data.gloss)}
+                    ${inp('Thickness (mm)', 'thick', data.thick)} ${inp('Size (cm)', 'size', data.size)}
+                    ${inp('Expected Qty', 'reqQty', data.reqQty || '', 'number')}
+                    <input type="hidden" data-key="movQty" value="${data.movQty || 0}">
+                    <div class="col-span-2 md:col-span-4">${inp('Note', 'note', data.note)}</div>
+                </div></div>`;
+            document.getElementById('product-list').insertAdjacentHTML('beforeend', html);
+        }
+
+        function inp(l, k, v='', t='text') { return `<div><label class="text-[8px] font-black text-gray-300 uppercase block mb-1">${l}</label><input type="${t}" data-key="${k}" value="${v}" class="journal-input text-xs"></div>`; }
+
+        async function handleSave(ev) {
+            ev.preventDefault();
+            const supabase = supabaseDb; // Local variable reference
+            const id = document.getElementById('edit-id').value;
+            const prods = Array.from(document.querySelectorAll('.product-item')).map(row => {
+                const p = {}; row.querySelectorAll('input').forEach(i => p[i.dataset.key] = i.value); return p;
+            });
+
+            const rawDate = document.getElementById('f-date').value;
+            let databaseDate;
+            try {
+                databaseDate = rawDate ? new Date(rawDate).toISOString() : new Date().toISOString();
+            } catch (e) {
+                databaseDate = new Date().toISOString();
+            }
+
+            const batchPayload = {
+                movement_type: document.getElementById('entry-type').value,
+                document_no: document.getElementById('f-doc').value,
+                project: document.getElementById('f-project').value,
+                customer: document.getElementById('f-customer').value,
+                title: document.getElementById('f-project').value,
+                created_by: 'admin',
+                created_at: databaseDate
+            };
+
+            try {
+                if(id) {
+                    // Update main parent batch metadata
+                    const { error: batchErr } = await supabase
+                        .from('batches')
+                        .update(batchPayload)
+                        .eq('id', id);
+                    if (batchErr) {
+                        console.error('Supabase batch update error:', batchErr);
+                        throw batchErr;
+                    }
+
+                    // Clear existing child batch items
+                    const { error: clearErr } = await supabase
+                        .from('batch_items')
+                        .delete()
+                        .eq('batch_id', id);
+                    if (clearErr) {
+                        console.error('Supabase clear old items error:', clearErr);
+                        throw clearErr;
+                    }
+
+                    // Prepare items mapping exact column names with spaces/parentheses
+                    const itemsPayload = prods.map(p => ({
+                        batch_id: id,
+                        type: p.type,
+                        pattern: p.pattern,
+                        color: p.color,
+                        gloss: p.gloss,
+                        'thickness (mm)': parseFloat(p.thick) || null,
+                        'size (cm)': p.size,
+                        expected_qty: parseFloat(p.reqQty) || 0,
+                        actual_qty: parseFloat(p.movQty) || 0,
+                        note: p.note
+                    }));
+
+                    const { error: itemsErr } = await supabase
+                        .from('batch_items')
+                        .insert(itemsPayload);
+                    if (itemsErr) {
+                        console.error('Supabase batch items insert error during update:', itemsErr);
+                        throw itemsErr;
+                    }
+                } else {
+                    // Insert parent batch row
+                    const { data: newBatch, error: batchErr } = await supabase
+                        .from('batches')
+                        .insert(batchPayload)
+                        .select()
+                        .single();
+                    if (batchErr) {
+                        console.error('Supabase insert batches error:', batchErr);
+                        throw batchErr;
+                    }
+
+                    // Map child items to reference the parent batch ID
+                    const itemsPayload = prods.map(p => ({
+                        batch_id: newBatch.id,
+                        type: p.type,
+                        pattern: p.pattern,
+                        color: p.color,
+                        gloss: p.gloss,
+                        'thickness (mm)': parseFloat(p.thick) || null,
+                        'size (cm)': p.size,
+                        expected_qty: parseFloat(p.reqQty) || 0,
+                        actual_qty: parseFloat(p.movQty) || 0,
+                        note: p.note
+                    }));
+
+                    const { error: itemsErr } = await supabase
+                        .from('batch_items')
+                        .insert(itemsPayload);
+                    if (itemsErr) {
+                        console.error('Supabase batch items insert error:', itemsErr);
+                        throw itemsErr;
+                    }
+                }
+
+                closeModal();
+                await updateAll();
+            } catch (err) {
+                console.error('Detailed Save Error:', err);
+                const errorMsg = err.message || err.details || err.hint || JSON.stringify(err);
+                alert('Saving failed: ' + errorMsg);
+            }
+        }
+
+        function openUpdateModal(entryId, idx) {
+            const e = db.find(x => x.id == entryId);
+            const p = e.products[idx];
+            context = { entryId, idx, exp: Number(p.reqQty) };
+            document.getElementById('update-item-desc').innerText = `${p.type} ${p.color}`;
+            document.getElementById('update-expected-label').innerText = p.reqQty;
+            document.getElementById('update-actual-input').value = p.movQty;
+            document.getElementById('update-modal').classList.remove('hidden');
+            document.getElementById('update-error').classList.add('hidden');
+        }
+
+        function closeUpdateModal() { document.getElementById('update-modal').classList.add('hidden'); }
+
+        async function saveActualUpdate() {
+            const val = Number(document.getElementById('update-actual-input').value);
+            if (val < 0 || val > context.exp) { document.getElementById('update-error').classList.remove('hidden'); return; }
+
+            const supabase = supabaseDb; // Local variable reference
+            try {
+                const itemToUpdate = db.find(x => x.id == context.entryId).products[context.idx];
+                const { error } = await supabase
+                    .from('batch_items')
+                    .update({ actual_qty: val })
+                    .eq('id', itemToUpdate.id);
+
+                if (error) {
+                    console.error('Supabase item quantity update failed:', error);
+                    throw error;
+                }
+
+                closeUpdateModal();
+                await updateAll();
+            } catch (err) {
+                console.error('Error saving progress tracking update:', err);
+                const errorMsg = err.message || err.details || err.hint || JSON.stringify(err);
+                alert('Failure saving updated actual progress: ' + errorMsg);
+            }
+        }
+
+        function renderStats() {
+            let cin=0, cout=0, pin=0, pout=0;
+            db.forEach(e => e.products.forEach(p => {
+                const m = Number(p.movQty || 0), r = Math.max(0, Number(p.reqQty) - m);
+                if (e.type === 'IN') { cin += m; pin += r; } else { cout += m; pout += r; }
+            }));
+            const curr = cin - cout, avail = curr - pout + pin;
+            document.getElementById('stat-grid').innerHTML = `
+                <div class="bg-white p-4 rounded-2xl border border-gray-50 shadow-sm"><p class="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Comp Inflow</p><h3 class="text-xl font-black text-emerald-500">${cin.toLocaleString()}</h3></div>
+                <div class="bg-white p-4 rounded-2xl border border-gray-50 shadow-sm"><p class="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Comp Outflow</p><h3 class="text-xl font-black text-rose-500">${cout.toLocaleString()}</h3></div>
+                <div class="bg-white p-4 rounded-2xl border border-gray-50 shadow-sm"><p class="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1 text-emerald-300">Pending In</p><h3 class="text-xl font-black text-emerald-300/80">${pin.toLocaleString()}</h3></div>
+                <div class="bg-white p-4 rounded-2xl border border-gray-50 shadow-sm"><p class="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1 text-rose-300">Pending Out</p><h3 class="text-xl font-black text-rose-300/80">${pout.toLocaleString()}</h3></div>
+                <div class="bg-gray-900 p-4 rounded-2xl shadow-lg"><p class="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Current Stock</p><h3 class="text-xl font-black text-white">${curr.toLocaleString()}</h3></div>
+                <div class="bg-indigo-600 p-4 rounded-2xl shadow-lg"><p class="text-[8px] font-black text-indigo-100 uppercase tracking-widest mb-1 text-indigo-100">Available Stock</p><h3 class="text-xl font-black text-white">${avail.toLocaleString()}</h3></div>`;
+        }
+
+        function renderJournal() {
+            const list = document.getElementById('journal-list');
+            if(!db.length) { list.innerHTML = `<p class="py-20 text-center text-gray-300 italic">No records found.</p>`; return; }
+            list.innerHTML = db.map(e => {
+                const statuses = e.products.map(p => getStatus(p.reqQty, p.movQty));
+                const docStatus = statuses.every(s => s === 'Completed') ? 'Completed' : (statuses.every(s => s === 'Pending') ? 'Pending' : 'Partial');
+                return `<div class="bg-white border border-gray-50 rounded-[2rem] p-6 shadow-sm relative overflow-hidden">
+                    <div class="absolute left-0 top-0 h-full w-1.5 ${e.type === 'IN' ? 'bg-emerald-500' : 'bg-rose-500'}"></div>
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1.5"><span class="text-[9px] font-black uppercase ${e.type === 'IN' ? 'text-emerald-500' : 'text-rose-500'} tracking-widest">STOCK ${e.type}</span><span class="text-gray-200 font-bold">•</span><span class="text-[10px] font-bold text-gray-400">${e.date}</span><span class="status-badge status-${docStatus.toLowerCase()}">${docStatus}</span></div>
+                            <h3 class="text-xl font-black tracking-tight text-gray-900 leading-none mb-1">${e.project}</h3><p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Doc: ${e.doc} / Client: ${e.customer}</p>
+                        </div>
+                        <div class="flex gap-4"><button onclick="openModal('${e.type}', '${e.id}')" class="text-[10px] font-black text-gray-400 hover:text-indigo-600 uppercase transition-all">Edit</button><button onclick="deleteEntry('${e.id}')" class="text-[10px] font-black text-gray-400 hover:text-rose-500 uppercase transition-all">Delete</button></div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                        ${e.products.map((p, idx) => {
+                            const pStat = getStatus(p.reqQty, p.movQty);
+                            const perc = p.reqQty > 0 ? (Number(p.movQty) / Number(p.reqQty)) * 100 : 0;
+                            return `<div class="bg-gray-50/50 p-7 rounded-[2rem] border border-gray-100 flex flex-col">
+                                <div class="flex justify-between items-center mb-6 w-full">
+                                    <span class="status-badge status-${pStat.toLowerCase()}" style="font-size: 7px; padding: 2px 8px;">${pStat}</span>
+                                    <button onclick="openUpdateModal('${e.id}', ${idx})" class="flex items-center gap-1.5 text-[8px] font-bold text-gray-400 hover:text-gray-800 transition-all uppercase whitespace-nowrap">
+                                        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                        Record Actual
+                                    </button>
+                                </div>
+                                <p class="text-[14px] font-bold text-gray-900 mb-6 leading-tight">${p.type} ${p.color}</p>
+                                <div class="space-y-4">
+                                    <div class="flex justify-between text-[9px] font-black uppercase">
+                                        <span class="text-gray-300">Exp: <span class="text-gray-900">${p.reqQty}</span></span>
+                                        <span class="text-gray-300">Act: <span class="text-gray-900">${p.movQty}</span></span>
+                                    </div>
+                                    <div class="relative w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                        <div class="h-full bg-indigo-500 rounded-full transition-all duration-700" style="width: ${perc}%"></div>
+                                    </div>
+                                    <div class="flex justify-end"><span class="text-[8px] font-black text-gray-300">${Math.round(perc)}%</span></div>
+                                    <div class="flex justify-between items-end pt-2">
+                                        <div>
+                                            <p class="text-[8px] font-black text-gray-300 uppercase mb-1">Specs</p>
+                                            <p class="text-[14px] font-bold text-gray-800">${p.thick} mm / ${p.size} cm</p>
+                                        </div>
+                                        <p class="text-xl font-black ${e.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}">${e.type==='IN'?'+':'-'}${p.movQty}</p>
+                                    </div>
+                                </div></div>`}).join('')}
+                    </div></div>`}).join('');
+        }
+
+        function renderTrendChart() {
+            const months = [...new Set(db.filter(e => e.date).map(e => e.date.substring(0, 7)))].sort();
+            const last12 = months.slice(-12);
+            const mData = last12.map(m => {
+                let cin=0, cout=0, pin=0, pout=0;
+                db.filter(e => e.date && e.date.substring(0, 7) === m).forEach(e => e.products.forEach(p => {
+                    const mv = Number(p.movQty), rm = Math.max(0, Number(p.reqQty)-mv);
+                    if(e.type==='IN') { cin+=mv; pin+=rm; } else { cout+=mv; pout+=rm; }
+                }));
+                return { m, cin, cout, pin, pout };
+            });
+            if(!mData.length) {
+                document.getElementById('trend-bars').innerHTML = '<div class="w-full text-center py-20 text-gray-500 font-bold uppercase tracking-widest text-xs">No trend timeline data available</div>';
+                document.getElementById('trend-labels').innerHTML = '';
+                return;
+            }
+            const maxVal = Math.max(...mData.map(d => Math.max(d.cin+d.pin, d.cout+d.pout)), 1);
+            document.getElementById('trend-bars').innerHTML = mData.map(d => `
+                <div class="flex-1 flex justify-center items-end h-full group relative gap-1">
+                    <div class="w-full flex flex-col justify-end h-full">
+                        <div class="w-full flex flex-col-reverse" style="height:${((d.cin+d.pin)/maxVal)*100}%">
+                            <div class="bg-emerald-500 w-full" style="height:${(d.cin/(d.cin+d.pin||1))*100}%"></div>
+                            <div class="bg-emerald-500 opacity-50 w-full" style="height:${(d.pin/(d.cin+d.pin||1))*100}%"></div>
+                        </div>
+                    </div>
+                    <div class="w-full flex flex-col justify-end h-full">
+                        <div class="w-full flex flex-col-reverse" style="height:${((d.cout+d.pout)/maxVal)*100}%">
+                            <div class="bg-rose-500 w-full" style="height:${(d.cout/(d.cout+d.pout||1))*100}%"></div>
+                            <div class="bg-rose-500 opacity-50 w-full" style="height:${(d.pout/(d.cout+d.pout||1))*100}%"></div>
+                        </div>
+                    </div>
+                    <div class="absolute -top-16 left-1/2 -translate-x-1/2 bg-white text-gray-900 px-3 py-2 rounded-xl text-[8px] font-black shadow-xl opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none border border-gray-100 whitespace-nowrap leading-tight">
+                        <div class="text-emerald-600 uppercase">Act IN: ${d.cin} / Rem: ${d.pin}</div>
+                        <div class="text-rose-600 uppercase">Act OUT: ${d.cout} / Rem: ${d.pout}</div>
+                    </div>
+                </div>`).join('');
+            document.getElementById('trend-labels').innerHTML = mData.map(d => `<div class="flex-1 text-center font-bold tracking-tighter text-[8px] uppercase text-gray-400">${new Date(d.m + '-02').toLocaleString('default',{month:'short'})}</div>`).join('');
+        }
+
+        function renderVariantMovement() {
+            const stats = {};
+            db.forEach(e => e.products.forEach(p => {
+                const k = getVariantKey(p); if(!stats[k]) stats[k] = { cin:0, cout:0, pin:0, pout:0 };
+                const mv = Number(p.movQty), rm = Math.max(0, Number(p.reqQty)-mv);
+                if(e.type==='IN') { stats[k].cin+=mv; stats[k].pin+=rm; } else { stats[k].cout+=mv; stats[k].pout+=rm; }
+            }));
+            const tbody = document.getElementById('variant-movement-table');
+            tbody.innerHTML = Object.entries(stats).map(([k, s]) => {
+                const cur = s.cin-s.cout, av = cur-s.pout+s.pin;
+                return `<tr class="group"><td class="py-4 pr-4 border-b border-gray-50 text-[11px] font-bold">${formatVariantKey(k)}</td><td class="py-4 px-2 text-emerald-600 font-bold border-b border-gray-50 text-center">${s.cin}</td><td class="py-4 px-2 text-rose-600 font-bold border-b border-gray-100 text-center">${s.cout}</td><td class="py-4 px-2 text-emerald-500 opacity-40 font-bold border-b border-gray-50 text-center">${s.pin}</td><td class="py-4 px-2 text-rose-500 opacity-40 font-bold border-b border-gray-50 text-center">${s.pout}</td><td class="py-4 px-4 bg-slate-50/80 font-black text-gray-900 border-b border-slate-100 text-center">${cur}</td><td class="py-4 px-4 bg-indigo-50/50 font-black text-indigo-600 border-b border-indigo-100 text-center">${av}</td></tr>`
+            }).join('');
+        }
+
+        function renderMonthlyVariantInsights() {
+            const months = [...new Set(db.filter(e => e.date).map(e => e.date.substring(0, 7)))].sort().reverse();
+            document.getElementById('monthly-variant-grids').innerHTML = months.map(m => {
+                const monthData = db.filter(e => e.date && e.date.substring(0, 7) === m);
+                let mcin=0, mcout=0, mpin=0, mpout=0;
+                const stats = {};
+                monthData.forEach(e => e.products.forEach(p => {
+                    const k = getVariantKey(p); if(!stats[k]) stats[k] = { cin:0, cout:0, pin:0, pout:0 };
+                    const mv = Number(p.movQty), rm = Math.max(0, Number(p.reqQty)-mv);
+                    if(e.type==='IN') { stats[k].cin+=mv; stats[k].pin+=rm; mcin+=mv; mpin+=rm; } 
+                    else { stats[k].cout+=mv; stats[k].pout+=rm; mcout+=mv; mpout+=rm; }
+                }));
+                const max = Math.max(mcin+mpin, mcout+mpout, 1);
+                return `<div class="bg-gray-50 p-6 rounded-[2rem] space-y-4"><div class="flex justify-between items-center"><h4 class="text-lg font-black text-indigo-600 uppercase tracking-tighter">${new Date(m + '-02').toLocaleString('default', {month:'long', year:'numeric'})}</h4>
+                    <div class="h-12 w-24 flex items-end gap-1 bg-white/50 rounded-xl p-1 border border-white">
+                        <div class="flex-1 flex flex-col justify-end h-full"><div class="bg-emerald-500 opacity-50 w-full" style="height:${(mpin/max)*100}%"></div><div class="bg-emerald-500 w-full" style="height:${(mcin/max)*100}%"></div></div>
+                        <div class="flex-1 flex flex-col justify-end h-full"><div class="bg-rose-500 w-full" style="height:${(mcout/max)*100}%"></div><div class="bg-rose-500 opacity-50 w-full" style="height:${(mpout/max)*100}%"></div></div>
+                    </div></div>
+                    <div class="bg-white rounded-xl overflow-hidden shadow-sm"><table class="w-full text-left text-[10px] border-collapse"><thead class="bg-gray-100"><tr><th class="p-3 font-black">Variant</th><th class="p-3 text-emerald-600">In (Act/Rem)</th><th class="p-3 text-rose-600">Out (Act/Rem)</th><th class="p-3 font-black">Net Actual</th></tr></thead><tbody class="divide-y divide-gray-50">${Object.entries(stats).map(([k, s]) => `<tr><td class="p-3 font-bold text-gray-700">${formatVariantKey(k)}</td><td class="p-3"><span class="text-emerald-600 font-bold">+${s.cin}</span> <span class="text-gray-300">+${s.pin}</span></td><td class="p-3"><span class="text-rose-600 font-bold">-${s.cout}</span> <span class="text-gray-300">-${s.pout}</span></td><td class="p-3 font-black text-gray-900">${s.cin-s.cout}</td></tr>`).join('')}</tbody></table></div></div>`
+            }).join('');
+        }
+
+        function getVariantKey(p) { return `${p.type}|${p.pattern}|${p.color}|${p.gloss}|${p.thick}|${p.size}`; }
+        function formatVariantKey(key) { return key.split('|').map((attr, i) => `<span class="inline-block bg-gray-50 text-gray-500 px-2 py-0.5 rounded-md text-[8px] font-bold mr-1 mb-1 border border-gray-100">${attr}${i===4?' mm':(i===5?' cm':'')}</span>`).join(''); }
+        
+        async function deleteEntry(id) {
+            if(confirm('Delete batch?')) { 
+                const supabase = supabaseDb; // Local variable reference
+                try {
+                    // Delete child batch_items
+                    const { error: itemErr } = await supabase
+                        .from('batch_items')
+                        .delete()
+                        .eq('batch_id', id);
+                    if (itemErr) {
+                        console.error('Supabase batch_items deletion failed:', itemErr);
+                        throw itemErr;
+                    }
+
+                    // Delete batches row
+                    const { error: batchErr } = await supabase
+                        .from('batches')
+                        .delete()
+                        .eq('id', id);
+                    if (batchErr) {
+                        console.error('Supabase batch deletion failed:', batchErr);
+                        throw batchErr;
+                    }
+
+                    await updateAll(); 
+                } catch(err) {
+                    console.error('Error during transaction batch deletion:', err);
+                    alert('Deletion failed: Unable to remove batch data.');
+                }
+            }
+        }
+        
+        checkAuth();
+    </script>
+</body>
+</html>
