@@ -415,7 +415,7 @@
                 project: document.getElementById('f-project').value,
                 customer: document.getElementById('f-customer').value,
                 title: document.getElementById('f-project').value,
-                created_by: 'admin',
+                // Omitted "created_by" to bypass UUID parsing conflict on "admin" string
                 created_at: databaseDate
             };
 
