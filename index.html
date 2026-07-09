@@ -108,7 +108,7 @@
                 <div>
                     <h2 class="text-5xl font-black tracking-tighter text-gray-900 mb-2" id="view-title">Journal Entry</h2>
                 </div>
-                <!-- Action button area with newly integrated Import Excel utility -->
+                <!-- Action button area with Excel Import trigger -->
                 <div class="flex gap-3 flex-wrap">
                     <button onclick="triggerExcelImport()" class="bg-slate-700 hover:bg-slate-800 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-100 transition-all">Import Excel</button>
                     <button onclick="openModal('IN')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 transition-all">+ Stock In</button>
@@ -347,7 +347,7 @@
                         id: bi.id,
                         type: bi.type,
                         pattern: bi.pattern,
-                        color: bi.color,
+                        color: bi.color || bi.pantone_code || '', // Support color fallback
                         gloss: bi.gloss,
                         // Fallback mechanisms ensure zero-crash operations on legacy null/empty values
                         thick: (bi.thickness !== undefined && bi.thickness !== null) ? bi.thickness : bi['thickness (mm)'], 
@@ -633,7 +633,7 @@
         }
 
         function openUpdateModal(entryId, idx) {
-            const e = db.find(x => x.id == editId);
+            const e = db.find(x => x.id == entryId);
             const p = e.products[idx];
             context = { entryId, idx, exp: Number(p.reqQty) };
             document.getElementById('update-item-desc').innerText = `${p.type} ${p.color}`;
@@ -915,12 +915,8 @@
                         };
                     });
 
-                    // Log output records cleanly in the developer console
-                    console.log("=== Excel Import Parsed Rows ===");
-                    console.table(parsedRows);
-                    console.log(parsedRows);
-                    
-                    alert(`Excel file successfully parsed! ${parsedRows.length} rows have been printed to the browser console.`);
+                    // Trigger Supabase bulk creation transaction pipeline
+                    importExcelToSupabase(parsedRows);
                     
                 } catch(err) {
                     console.error("Error reading or parsing Excel file:", err);
@@ -931,6 +927,141 @@
                 }
             };
             reader.readAsBinaryString(file);
+        }
+
+        // Dedicated helper to parse multiple date representations cleanly (handles both serials and string text formats)
+        function parseExcelDate(val) {
+            if (!val) return new Date().toISOString();
+            
+            if (typeof val === 'number' || !isNaN(val)) {
+                const serial = Number(val);
+                const utcDays = Math.floor(serial - 25569);
+                const utcValue = utcDays * 86400;
+                const parsedDate = new Date(utcValue * 1000);
+                if (!isNaN(parsedDate.getTime())) return parsedDate.toISOString();
+            }
+            
+            try {
+                const standardDate = new Date(val);
+                if (!isNaN(standardDate.getTime())) return standardDate.toISOString();
+            } catch(e) {}
+            
+            return new Date().toISOString();
+        }
+
+        // Group rows in Excel and upload transaction records directly to Supabase central tables
+        async function importExcelToSupabase(parsedRows) {
+            const supabase = supabaseDb;
+            
+            // Group raw lines by shared metadata (Date + Doc # + Project + Customer) to preserve database integrity
+            const batchesMap = {};
+            parsedRows.forEach(row => {
+                const dStr = row["Date"] ? String(row["Date"]).trim() : "";
+                const docStr = row["Doc #"] ? String(row["Doc #"]).trim() : "";
+                const projStr = row["Project"] ? String(row["Project"]).trim() : "";
+                const custStr = row["Customer"] ? String(row["Customer"]).trim() : "";
+                
+                if (!dStr && !docStr && !projStr && !custStr) return; // Skip complete blank rows
+                
+                const groupKey = `${dStr}|${docStr}|${projStr}|${custStr}`;
+                if (!batchesMap[groupKey]) {
+                    batchesMap[groupKey] = {
+                        date: dStr,
+                        doc_no: docStr,
+                        project: projStr,
+                        customer: custStr,
+                        items: []
+                    };
+                }
+                batchesMap[groupKey].items.push(row);
+            });
+
+            const batchGroups = Object.values(batchesMap);
+            if (batchGroups.length === 0) {
+                alert("The selected spreadsheet does not contain any valid rows with batch parameters.");
+                return;
+            }
+
+            let insertedBatchesCount = 0;
+            let insertedItemsCount = 0;
+
+            try {
+                // Loop sequentially through each parsed block to avoid sequence collision
+                for (const group of batchGroups) {
+                    const dbFormattedDate = parseExcelDate(group.date);
+                    
+                    const batchPayload = {
+                        movement_type: "IN", // Excel imported records default to INFLOW stock operations
+                        document_no: group.doc_no,
+                        project: group.project,
+                        customer: group.customer,
+                        title: group.project,
+                        created_at: dbFormattedDate
+                    };
+
+                    // 1. Save parent transaction row inside "batches"
+                    const { data: createdBatch, error: batchErr } = await supabase
+                        .from('batches')
+                        .insert(batchPayload)
+                        .select()
+                        .single();
+
+                    if (batchErr) {
+                        console.error("Excel batch creation database write failed:", batchErr);
+                        throw new Error(`Failed to create batch for project "${group.project}": ${batchErr.message}`);
+                    }
+
+                    // 2. Map item inputs targeting both custom dimensions and compatibility properties
+                    const itemsPayload = group.items.map(item => {
+                        const thicknessVal = parseFloat(item["Thickness (mm)"]) || null;
+                        const qtyVal = parseFloat(item["Expected Qty"]) || 0;
+                        const isOtherPattern = String(item["Pattern"] || "").trim().toLowerCase() === "other";
+                        
+                        return {
+                            batch_id: createdBatch.id,
+                            type: String(item["Type"] || "").trim(),
+                            pattern: String(item["Pattern"] || "").trim(),
+                            color: String(item["Color"] || "").trim(),
+                            pantone_code: String(item["Pantone Code"] || "").trim(),
+                            gloss: String(item["Gloss"] || "").trim(),
+                            thickness: thicknessVal,
+                            size: String(item["Size (cm)"] || "").trim(),
+                            expected_qty: qtyVal,
+                            actual_qty: 0, // fresh uploads initiate with zero completed units
+                            note: String(item["Note"] || "").trim(),
+                            
+                            // Save into custom pattern if applicable
+                            pattern_custom: isOtherPattern ? String(item["Pattern"] || "").trim() : null,
+                            
+                            // Compatibility write keys:
+                            'thickness (mm)': thicknessVal,
+                            'size (cm)': String(item["Size (cm)"] || "").trim()
+                        };
+                    });
+
+                    // 3. Save child items rows inside "batch_items"
+                    const { error: itemsErr } = await supabase
+                        .from('batch_items')
+                        .insert(itemsPayload);
+
+                    if (itemsErr) {
+                        console.error("Excel specification items creation database write failed:", itemsErr);
+                        throw new Error(`Failed to insert items under document "${group.doc_no}": ${itemsErr.message}`);
+                    }
+
+                    insertedBatchesCount++;
+                    insertedItemsCount += itemsPayload.length;
+                }
+
+                alert(`Successfully imported spreadsheet data! Created ${insertedBatchesCount} batches containing ${insertedItemsCount} specifications dynamically on Supabase!`);
+                
+                // Refresh logbook and metrics visualization
+                await updateAll();
+
+            } catch(err) {
+                console.error("Spreadsheet save transaction failure:", err);
+                alert("Import failed during database writes: " + (err.message || JSON.stringify(err)));
+            }
         }
         
         checkAuth();
