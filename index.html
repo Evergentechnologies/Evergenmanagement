@@ -31,13 +31,12 @@
             transition: all 0.2s ease;
         }
 
-        /* Unified style for inputs and dropdowns to guarantee matching heights, margins, and bottom border lengths */
         .journal-input { 
             border: none; 
             border-bottom: 2px solid #f3f4f6; 
             padding: 0.5rem 0; 
             width: 100%; 
-            height: 2.75rem; /* Explicit height to align inputs and dropdowns on the same line */
+            height: 2.75rem; 
             outline: none; 
             transition: all 0.3s; 
             font-weight: 600; 
@@ -108,11 +107,10 @@
                 <div>
                     <h2 class="text-5xl font-black tracking-tighter text-gray-900 mb-2" id="view-title">Journal Entry</h2>
                 </div>
-                <!-- Action button area with Excel Import trigger -->
                 <div class="flex gap-3 flex-wrap">
-                    <button onclick="triggerExcelImport()" class="bg-slate-700 hover:bg-slate-800 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-100 transition-all">Import Excel</button>
-                    <button onclick="openModal('IN')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 transition-all">+ Stock In</button>
-                    <button onclick="openModal('OUT')" class="bg-rose-500 hover:bg-rose-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-rose-100 transition-all">+ Stock Out</button>
+                    <button id="import-excel-btn" onclick="triggerExcelImport()" class="bg-slate-700 hover:bg-slate-800 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-100 transition-all">Import Excel</button>
+                    <button id="btn-stock-in" onclick="openModal('IN')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 transition-all">+ Stock In</button>
+                    <button id="btn-stock-out" onclick="openModal('OUT')" class="bg-rose-500 hover:bg-rose-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-rose-100 transition-all">+ Stock Out</button>
                 </div>
             </div>
 
@@ -221,28 +219,69 @@
         // Supabase Client Initialization
         const supabaseUrl = 'https://oshftyrfxcbrnbrioxwn.supabase.co';
         const supabaseKey = 'sb_publishable_8F5C0uvXa2zzrtS5V3AYfQ_H0wqCbic';
-        
-        // Define connection using clear global to prevent conflict with the CDN's script block scope
         const supabaseDb = window.supabase.createClient(supabaseUrl, supabaseKey);
 
         let db = [];
         let context = null;
 
-        function handleLogin(e) {
-            e.preventDefault();
-            const u = document.getElementById('login-user').value;
-            const p = document.getElementById('login-pass').value;
-            if(u === 'admin' && p === 'admin123') { sessionStorage.setItem('evergen_auth', 'true'); checkAuth(); }
-            else { document.getElementById('login-error').classList.remove('hidden'); }
+        function getCurrentRole() {
+            return sessionStorage.getItem('evergen_role') || null;
         }
 
-        function handleLogout() { sessionStorage.removeItem('evergen_auth'); checkAuth(); }
+        function applyRoleAccess() {
+            const role = getCurrentRole();
+            const isFounder = role === 'founder';
+
+            const navJournal = document.getElementById('nav-journal');
+            if (navJournal) navJournal.classList.toggle('hidden', isFounder);
+
+            const btnImport = document.getElementById('import-excel-btn');
+            const btnIn = document.getElementById('btn-stock-in');
+            const btnOut = document.getElementById('btn-stock-out');
+            
+            if (btnImport) btnImport.classList.toggle('hidden', isFounder);
+            if (btnIn) btnIn.classList.toggle('hidden', isFounder);
+            if (btnOut) btnOut.classList.toggle('hidden', isFounder);
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const u = document.getElementById('login-user').value.trim();
+            const p = document.getElementById('login-pass').value.trim();
+            
+            if (u === 'admin' && p === 'admin123') {
+                sessionStorage.setItem('evergen_auth', 'true');
+                sessionStorage.setItem('evergen_role', 'admin');
+                checkAuth();
+            } else if (u === 'founder' && p === 'founder123') {
+                sessionStorage.setItem('evergen_auth', 'true');
+                sessionStorage.setItem('evergen_role', 'founder');
+                checkAuth();
+            } else {
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        }
+
+        function handleLogout() { 
+            sessionStorage.removeItem('evergen_auth'); 
+            sessionStorage.removeItem('evergen_role'); 
+            checkAuth(); 
+        }
 
         function checkAuth() {
             const isAuth = sessionStorage.getItem('evergen_auth');
             if(isAuth === 'true') {
                 document.getElementById('login-screen').classList.add('hidden');
                 document.getElementById('main-app').classList.remove('hidden');
+                
+                applyRoleAccess();
+                
+                const role = getCurrentRole();
+                if (role === 'founder') {
+                    showView('dashboard');
+                } else {
+                    showView('journal');
+                }
                 updateAll();
             } else {
                 document.getElementById('login-screen').classList.remove('hidden');
@@ -263,9 +302,8 @@
         }
 
         async function fetchAllFromSupabase() {
-            const supabase = supabaseDb; // Local reference
+            const supabase = supabaseDb;
             try {
-                // Attempt direct join query first
                 const { data, error } = await supabase
                     .from('batches')
                     .select(`
@@ -278,15 +316,10 @@
                     console.error('Supabase join query failed. Proceeding with split-query fallback...', error);
                     throw error;
                 }
-
                 mapFetchedData(data);
-
             } catch (jointErr) {
-                // Execute split-query fallback if join fails
                 try {
                     console.log('Initiating split-query fallback paths...');
-
-                    // 1. Select all batches
                     const { data: batchesData, error: batchesError } = await supabase
                         .from('batches')
                         .select('*')
@@ -297,7 +330,6 @@
                         throw batchesError;
                     }
 
-                    // 2. Select all batch_items
                     const { data: itemsData, error: itemsError } = await supabase
                         .from('batch_items')
                         .select('*');
@@ -307,17 +339,11 @@
                         throw itemsError;
                     }
 
-                    // 3. Match items in JavaScript using strict equality: item.batch_id === batch.id
                     const fallbackData = (batchesData || []).map(batch => {
                         const matchedItems = (itemsData || []).filter(item => item.batch_id === batch.id);
-                        return {
-                            ...batch,
-                            batch_items: matchedItems
-                        };
+                        return { ...batch, batch_items: matchedItems };
                     });
-
                     mapFetchedData(fallbackData);
-
                 } catch (fallbackErr) {
                     console.error('Data retrieval processes failed:', fallbackErr);
                     alert('Connection failure: ' + (fallbackErr.message || 'Please check browser developer console for details.'));
@@ -325,7 +351,6 @@
             }
         }
 
-        // Handles mapping the schema values to application state variables
         function mapFetchedData(rawBatches) {
             db = (rawBatches || []).map(b => {
                 let formattedDate = '';
@@ -347,9 +372,8 @@
                         id: bi.id,
                         type: bi.type,
                         pattern: bi.pattern,
-                        color: bi.color || bi.pantone_code || '', // Support color fallback
+                        color: bi.color || bi.pantone_code || '',
                         gloss: bi.gloss,
-                        // Fallback mechanisms ensure zero-crash operations on legacy null/empty values
                         thick: (bi.thickness !== undefined && bi.thickness !== null) ? bi.thickness : bi['thickness (mm)'], 
                         size: (bi.size !== undefined && bi.size !== null) ? bi.size : bi['size (cm)'],       
                         color_family: bi.color_family || '',
@@ -360,7 +384,6 @@
                     }))
                 };
             });
-
             updateAllUI();
         }
 
@@ -372,6 +395,10 @@
         }
 
         function showView(v) {
+            const role = getCurrentRole();
+            if (role === 'founder' && v === 'journal') {
+                v = 'dashboard';
+            }
             document.getElementById('view-journal').classList.toggle('hidden', v !== 'journal');
             document.getElementById('view-dashboard').classList.toggle('hidden', v !== 'dashboard');
             document.getElementById('nav-journal').className = `nav-pill ${v === 'journal' ? 'nav-active' : 'text-gray-400'} text-[10px] font-black uppercase tracking-widest`;
@@ -381,6 +408,11 @@
         }
 
         function openModal(type, editId = null) {
+            const role = getCurrentRole();
+            if (role === 'founder') {
+                alert("Access Denied: Spectator account cannot create or modify transactions.");
+                return;
+            }
             const container = document.getElementById('product-list');
             document.getElementById('entryForm').reset();
             container.innerHTML = '';
@@ -401,7 +433,6 @@
 
         function closeModal() { document.getElementById('modal').classList.add('hidden'); }
 
-        // Handles dynamic pattern text configuration inside the local column space
         window.onPatternChange = function(selectEl, uniqueId) {
             const customContainer = document.getElementById(`pattern-custom-container-${uniqueId}`);
             const customInput = document.getElementById(`pattern-custom-input-${uniqueId}`);
@@ -418,18 +449,10 @@
             const isOtherSelected = data.pattern === 'Other';
             
             const html = `<div class="product-item p-8 bg-white border border-gray-100 rounded-[2.5rem] relative shadow-sm" id="p-${id}">
-                <!-- Symmetrical Remove Button placed absolutely in top right to prevent grid interference -->
                 <button type="button" onclick="document.getElementById('p-${id}').remove()" class="absolute top-8 right-8 text-[9px] font-black text-rose-400 hover:text-rose-600 uppercase tracking-widest transition-all">Remove</button>
-                
                 <div class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-8">Item Specs</div>
-                
-                <!-- Perfectly balanced CSS Grid representing symmetric grid dimensions with items aligned to the top -->
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-6 items-start">
-                    
-                    <!-- Column 1: Type -->
                     ${sel('Type', 'type', ['Classic', 'Nubuck', 'Botanica', 'Luxe'], data.type || '')}
-                    
-                    <!-- Column 2: Pattern (With nested Custom Pattern Wrapper inside same field container) -->
                     <div class="flex flex-col justify-start">
                         <label class="text-[8px] font-black text-gray-300 uppercase block mb-1 tracking-widest">Pattern</label>
                         <select data-key="pattern" onchange="onPatternChange(this, '${id}')" class="journal-input cursor-pointer pr-6 bg-transparent" style="appearance: none; background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right center; background-size: 0.7rem;">
@@ -439,41 +462,26 @@
                                 return `<option value="${opt}" ${isSel} class="bg-white text-gray-900">${opt}</option>`;
                             }).join('')}
                         </select>
-
-                        <!-- Nested Custom Pattern container that displays inline under the dropdown without stretching/shifting neighbor elements -->
                         <div id="pattern-custom-container-${id}" class="${isOtherSelected ? '' : 'hidden'} mt-4">
                             <label class="text-[8px] font-black text-gray-300 uppercase block mb-1 tracking-widest">Custom Pattern</label>
                             <input type="text" data-key="pattern_custom" id="pattern-custom-input-${id}" value="${data.pattern_custom || ''}" placeholder="Enter pattern name" class="journal-input">
                         </div>
                     </div>
-                    
-                    <!-- Column 3: Pantone Code -->
                     ${inp('Pantone Code', 'color', data.color || '', 'text', 'placeholder="e.g., Black 6 C"')}
-                    
-                    <!-- Column 4: Color -->
                     ${sel('Color', 'color_family', ['Red', 'Orange', 'Yellow', 'Green', 'Blue', 'Navy', 'Purple', 'Pink', 'White', 'Black', 'Grey', 'Cream', 'Brown'], data.color_family || '')}
-                    
-                    <!-- Row 2: Gloss | Thickness (mm) | Size (cm) | Expected Qty -->
                     ${sel('Gloss', 'gloss', ['เงาพื้นฐาน', 'ด้าน'], data.gloss || '')}
-                    
                     ${sel('Thickness (mm)', 'thick', ['0.6', '0.8', '1.0', '1.2', '1.6', '2.0'], data.thick || '')}
-                    
                     ${sel('Size (cm)', 'size', ['60x100', '100x120'], data.size || '')}
-                    
                     ${inp('Expected Qty', 'reqQty', data.reqQty || '', 'number', 'placeholder="0"')}
-                    
-                    <!-- Row 3: Note (Full Width) -->
                     <div class="col-span-1 md:col-span-2 lg:col-span-4 mt-2">
                         ${inp('Note', 'note', data.note || '', 'text', 'placeholder="Enter specification notes..."')}
                     </div>
-                    
                     <input type="hidden" data-key="movQty" value="${data.movQty || 0}">
                 </div>
             </div>`;
             document.getElementById('product-list').insertAdjacentHTML('beforeend', html);
         }
 
-        // Standardized input renderer assuring aligned structures and label configurations
         function inp(l, k, v='', t='text', extra='') { 
             return `<div class="flex flex-col justify-start">
                 <label class="text-[8px] font-black text-gray-300 uppercase block mb-1 tracking-widest">${l}</label>
@@ -481,7 +489,6 @@
             </div>`; 
         }
 
-        // Standardized select renderer utilizing matching paddings, line indicators and chevrons
         function sel(l, k, options, selectedVal='', extraAttrs='') {
             const optionElems = options.map(opt => {
                 const isSel = String(opt) === String(selectedVal) ? 'selected' : '';
@@ -499,10 +506,9 @@
 
         async function handleSave(ev) {
             ev.preventDefault();
-            const supabase = supabaseDb; // Local variable reference
+            const supabase = supabaseDb;
             const id = document.getElementById('edit-id').value;
             
-            // Map inputs and selects cleanly
             const prods = Array.from(document.querySelectorAll('.product-item')).map(row => {
                 const p = {}; 
                 row.querySelectorAll('input, select').forEach(i => {
@@ -527,13 +533,11 @@
                 project: document.getElementById('f-project').value,
                 customer: document.getElementById('f-customer').value,
                 title: document.getElementById('f-project').value,
-                // Omitted "created_by" to bypass UUID parsing conflict on "admin" string
                 created_at: databaseDate
             };
 
             try {
                 if(id) {
-                    // Update main parent batch metadata
                     const { error: batchErr } = await supabase
                         .from('batches')
                         .update(batchPayload)
@@ -543,7 +547,6 @@
                         throw batchErr;
                     }
 
-                    // Clear existing child batch items
                     const { error: clearErr } = await supabase
                         .from('batch_items')
                         .delete()
@@ -553,7 +556,6 @@
                         throw clearErr;
                     }
 
-                    // Prepare items mapping both exact new columns and standard compatibility fields
                     const itemsPayload = prods.map(p => ({
                         batch_id: id,
                         type: p.type,
@@ -564,11 +566,8 @@
                         size: p.size,
                         color_family: p.color_family || null,
                         pattern_custom: p.pattern === 'Other' ? (p.pattern_custom || null) : null,
-                        
-                        // Compatibility write parameters:
                         'thickness (mm)': parseFloat(p.thick) || null,
                         'size (cm)': p.size,
-                        
                         expected_qty: parseFloat(p.reqQty) || 0,
                         actual_qty: parseFloat(p.movQty) || 0,
                         note: p.note
@@ -582,7 +581,6 @@
                         throw itemsErr;
                     }
                 } else {
-                    // Insert parent batch row
                     const { data: newBatch, error: batchErr } = await supabase
                         .from('batches')
                         .insert(batchPayload)
@@ -593,7 +591,6 @@
                         throw batchErr;
                     }
 
-                    // Map child items to reference the parent batch ID
                     const itemsPayload = prods.map(p => ({
                         batch_id: newBatch.id,
                         type: p.type,
@@ -604,11 +601,8 @@
                         size: p.size,
                         color_family: p.color_family || null,
                         pattern_custom: p.pattern === 'Other' ? (p.pattern_custom || null) : null,
-                        
-                        // Compatibility write parameters:
                         'thickness (mm)': parseFloat(p.thick) || null,
                         'size (cm)': p.size,
-                        
                         expected_qty: parseFloat(p.reqQty) || 0,
                         actual_qty: parseFloat(p.movQty) || 0,
                         note: p.note
@@ -633,7 +627,7 @@
         }
 
         function openUpdateModal(entryId, idx) {
-            const e = db.find(x => x.id == editId);
+            const e = db.find(x => x.id == entryId);
             const p = e.products[idx];
             context = { entryId, idx, exp: Number(p.reqQty) };
             document.getElementById('update-item-desc').innerText = `${p.type} ${p.color}`;
@@ -649,7 +643,7 @@
             const val = Number(document.getElementById('update-actual-input').value);
             if (val < 0 || val > context.exp) { document.getElementById('update-error').classList.remove('hidden'); return; }
 
-            const supabase = supabaseDb; // Local variable reference
+            const supabase = supabaseDb;
             try {
                 const itemToUpdate = db.find(x => x.id == context.entryId).products[context.idx];
                 const { error } = await supabase
@@ -690,6 +684,8 @@
         function renderJournal() {
             const list = document.getElementById('journal-list');
             if(!db.length) { list.innerHTML = `<p class="py-20 text-center text-gray-300 italic">No records found.</p>`; return; }
+            const isFounder = getCurrentRole() === 'founder';
+            
             list.innerHTML = db.map(e => {
                 const statuses = e.products.map(p => getStatus(p.reqQty, p.movQty));
                 const docStatus = statuses.every(s => s === 'Completed') ? 'Completed' : (statuses.every(s => s === 'Pending') ? 'Pending' : 'Partial');
@@ -700,7 +696,7 @@
                             <div class="flex items-center gap-2 mb-1.5"><span class="text-[9px] font-black uppercase ${e.type === 'IN' ? 'text-emerald-500' : 'text-rose-500'} tracking-widest">STOCK ${e.type}</span><span class="text-gray-200 font-bold">•</span><span class="text-[10px] font-bold text-gray-400">${e.date}</span><span class="status-badge status-${docStatus.toLowerCase()}">${docStatus}</span></div>
                             <h3 class="text-xl font-black tracking-tight text-gray-900 leading-none mb-1">${e.project}</h3><p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Doc: ${e.doc} / Client: ${e.customer}</p>
                         </div>
-                        <div class="flex gap-4"><button onclick="openModal('${e.type}', '${e.id}')" class="text-[10px] font-black text-gray-400 hover:text-indigo-600 uppercase transition-all">Edit</button><button onclick="deleteEntry('${e.id}')" class="text-[10px] font-black text-gray-400 hover:text-rose-500 uppercase transition-all">Delete</button></div>
+                        ${isFounder ? '' : `<div class="flex gap-4"><button onclick="openModal('${e.type}', '${e.id}')" class="text-[10px] font-black text-gray-400 hover:text-indigo-600 uppercase transition-all">Edit</button><button onclick="deleteEntry('${e.id}')" class="text-[10px] font-black text-gray-400 hover:text-rose-500 uppercase transition-all">Delete</button></div>`}
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                         ${e.products.map((p, idx) => {
@@ -712,10 +708,10 @@
                                 <div class="w-full">
                                     <div class="flex justify-between items-center mb-6 w-full">
                                         <span class="status-badge status-${pStat.toLowerCase()}" style="font-size: 7px; padding: 2px 8px;">${pStat}</span>
-                                        <button onclick="openUpdateModal('${e.id}', ${idx})" class="flex items-center gap-1.5 text-[8px] font-bold text-gray-400 hover:text-gray-800 transition-all uppercase whitespace-nowrap">
+                                        ${isFounder ? '' : `<button onclick="openUpdateModal('${e.id}', ${idx})" class="flex items-center gap-1.5 text-[8px] font-bold text-gray-400 hover:text-gray-800 transition-all uppercase whitespace-nowrap">
                                             <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                             Record Actual
-                                        </button>
+                                        </button>`}
                                     </div>
                                     <p class="text-[14px] font-bold text-gray-900 mb-4 leading-tight">${p.type} ${p.color}</p>
                                     
@@ -794,14 +790,13 @@
                 if(e.type==='IN') { stats[k].cin+=mv; stats[k].pin+=rm; } else { stats[k].cout+=mv; stats[k].pout+=rm; }
             }));
             
-            // Map calculated rows to keep structures accessible for sorting
             const entries = Object.entries(stats).map(([k, s]) => {
                 const cur = s.cin-s.cout;
                 const av = cur-s.pout+s.pin;
                 return { k, s, cur, av };
             });
 
-            // Sort Variant Rows descending by Available quantity ("av") from highest to lowest
+            // Sorting by Available stock (av) highest to lowest
             entries.sort((a, b) => b.av - a.av);
 
             const tbody = document.getElementById('variant-movement-table');
@@ -824,7 +819,7 @@
                 }));
                 const max = Math.max(mcin+mpin, mcout+mpout, 1);
                 
-                // Map monthly structures and sort by Net Actual descending (highest to lowest, including negative values)
+                // Sorting monthly list descending by Net Actual
                 const sortedMonthlyStats = Object.entries(stats).map(([k, s]) => {
                     const netActual = s.cin - s.cout;
                     return { k, s, netActual };
@@ -859,10 +854,14 @@
         }
         
         async function deleteEntry(id) {
+            const role = getCurrentRole();
+            if (role === 'founder') {
+                alert("Access Denied: Spectator account cannot delete data.");
+                return;
+            }
             if(confirm('Delete batch?')) { 
-                const supabase = supabaseDb; // Local variable reference
+                const supabase = supabaseDb;
                 try {
-                    // Delete child batch_items
                     const { error: itemErr } = await supabase
                         .from('batch_items')
                         .delete()
@@ -872,7 +871,6 @@
                         throw itemErr;
                     }
 
-                    // Delete batches row
                     const { error: batchErr } = await supabase
                         .from('batches')
                         .delete()
@@ -890,12 +888,15 @@
             }
         }
 
-        // Trigger native file selection when clicking the styled "Import Excel" button
         function triggerExcelImport() {
+            const role = getCurrentRole();
+            if (role === 'founder') {
+                alert("Access Denied: Spectator account cannot import data.");
+                return;
+            }
             document.getElementById('excel-file-input').click();
         }
 
-        // Parse chosen spread sheet and map column keys with exact header parameters
         function handleExcelFile(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -905,15 +906,10 @@
                 try {
                     const data = evt.target.result;
                     const workbook = XLSX.read(data, { type: 'binary' });
-                    
-                    // Identify target tab
                     const targetSheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[targetSheetName];
-                    
-                    // Translate rows to object entries
                     const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
                     
-                    // Filter and assign variables matching database attributes
                     const parsedRows = rawRows.map(row => {
                         return {
                             "Date": row["Date"] !== undefined ? row["Date"] : "",
@@ -933,24 +929,20 @@
                         };
                     });
 
-                    // Trigger Supabase bulk creation transaction pipeline with structural validations
                     importExcelToSupabase(parsedRows);
                     
                 } catch(err) {
                     console.error("Error reading or parsing Excel file:", err);
                     alert("Failed to parse Excel file. See browser console for details.");
                 } finally {
-                    // Flush element value to allow importing identical file names successively
                     e.target.value = "";
                 }
             };
             reader.readAsBinaryString(file);
         }
 
-        // Dedicated helper to parse multiple date representations cleanly (handles both serials and string text formats)
         function parseExcelDate(val) {
             if (!val) return new Date().toISOString();
-            
             if (typeof val === 'number' || !isNaN(val)) {
                 const serial = Number(val);
                 const utcDays = Math.floor(serial - 25569);
@@ -958,20 +950,16 @@
                 const parsedDate = new Date(utcValue * 1000);
                 if (!isNaN(parsedDate.getTime())) return parsedDate.toISOString();
             }
-            
             try {
                 const standardDate = new Date(val);
                 if (!isNaN(standardDate.getTime())) return standardDate.toISOString();
             } catch(e) {}
-            
             return new Date().toISOString();
         }
 
-        // Validate data formats, group lines into correct transactional boundaries, and save records sequentially into Supabase
         async function importExcelToSupabase(parsedRows) {
             const supabase = supabaseDb;
             
-            // 1. Validate each row's Movement Type strictly before proceeding
             for (let idx = 0; idx < parsedRows.length; idx++) {
                 const row = parsedRows[idx];
                 const dStr = row["Date"] ? String(row["Date"]).trim() : "";
@@ -980,12 +968,8 @@
                 const projStr = row["Project"] ? String(row["Project"]).trim() : "";
                 const custStr = row["Customer"] ? String(row["Customer"]).trim() : "";
                 
-                // Skip trailing blank spreadsheet lines gracefully
-                if (!dStr && !docStr && !mType && !projStr && !custStr) {
-                    continue; 
-                }
+                if (!dStr && !docStr && !mType && !projStr && !custStr) continue; 
 
-                // If values are missing or misaligned, trigger early validation alerts pointing directly to Excel row coordinates
                 if (!mType) {
                     alert(`Import Aborted! Excel Row ${idx + 2} is missing the required "Movement Type" column value.`);
                     return;
@@ -997,7 +981,6 @@
                 }
             }
 
-            // 2. Group raw lines by shared transactional headers (Date + Doc # + Movement Type + Project + Customer) to preserve database integrity
             const batchesMap = {};
             parsedRows.forEach(row => {
                 const dStr = row["Date"] ? String(row["Date"]).trim() : "";
@@ -1006,12 +989,9 @@
                 const projStr = row["Project"] ? String(row["Project"]).trim() : "";
                 const custStr = row["Customer"] ? String(row["Customer"]).trim() : "";
                 
-                if (!dStr && !docStr && !mType && !projStr && !custStr) return; // Skip trailing blank rows
+                if (!dStr && !docStr && !mType && !projStr && !custStr) return; 
                 
-                // Translate readable Stock types into database codes 'IN' or 'OUT'
                 const movement_type = mType === "Stock In" ? "IN" : "OUT";
-
-                // Group using movement_type to isolate Stock In and Stock Out records on matching sheets
                 const groupKey = `${dStr}|${docStr}|${movement_type}|${projStr}|${custStr}`;
                 if (!batchesMap[groupKey]) {
                     batchesMap[groupKey] = {
@@ -1036,12 +1016,10 @@
             let insertedItemsCount = 0;
 
             try {
-                // Loop sequentially through grouped records
                 for (const group of batchGroups) {
                     const dbFormattedDate = parseExcelDate(group.date);
-                    
                     const batchPayload = {
-                        movement_type: group.movement_type, // Map validated stock flow value
+                        movement_type: group.movement_type, 
                         document_no: group.doc_no,
                         project: group.project,
                         customer: group.customer,
@@ -1049,7 +1027,6 @@
                         created_at: dbFormattedDate
                     };
 
-                    // 1. Save parent transaction row inside "batches"
                     const { data: createdBatch, error: batchErr } = await supabase
                         .from('batches')
                         .insert(batchPayload)
@@ -1061,7 +1038,6 @@
                         throw new Error(`Failed to create batch for project "${group.project}": ${batchErr.message}`);
                     }
 
-                    // 2. Map item inputs targeting both custom dimensions and compatibility properties
                     const itemsPayload = group.items.map(item => {
                         const thicknessVal = parseFloat(item["Thickness (mm)"]) || null;
                         const qtyVal = parseFloat(item["Expected Qty"]) || 0;
@@ -1077,19 +1053,14 @@
                             thickness: thicknessVal,
                             size: String(item["Size (cm)"] || "").trim(),
                             expected_qty: qtyVal,
-                            actual_qty: 0, // fresh uploads initiate with zero completed units
+                            actual_qty: 0, 
                             note: String(item["Note"] || "").trim(),
-                            
-                            // Save into custom pattern if applicable
                             pattern_custom: isOtherPattern ? String(item["Pattern"] || "").trim() : null,
-                            
-                            // Compatibility write keys:
                             'thickness (mm)': thicknessVal,
                             'size (cm)': String(item["Size (cm)"] || "").trim()
                         };
                     });
 
-                    // 3. Save child items rows inside "batch_items"
                     const { error: itemsErr } = await supabase
                         .from('batch_items')
                         .insert(itemsPayload);
@@ -1104,10 +1075,7 @@
                 }
 
                 alert(`Successfully imported spreadsheet data! Created ${insertedBatchesCount} batches containing ${insertedItemsCount} specifications dynamically on Supabase!`);
-                
-                // Refresh logbook and metrics visualization
                 await updateAll();
-
             } catch(err) {
                 console.error("Spreadsheet save transaction failure:", err);
                 alert("Import failed during database writes: " + (err.message || JSON.stringify(err)));
