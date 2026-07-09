@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EvergenTech Management | Stock Journal</title>
+    <title>Evergen Management | Stock Journal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Supabase CDN Integration -->
@@ -29,7 +29,22 @@
             transition: all 0.2s ease;
         }
 
-        .journal-input { border: none; border-bottom: 2px solid #f3f4f6; padding: 0.75rem 0; width: 100%; outline: none; transition: all 0.3s; font-weight: 600; background: transparent; }
+        /* Unified style for inputs and dropdowns to guarantee matching heights, margins, and bottom border lengths */
+        .journal-input { 
+            border: none; 
+            border-bottom: 2px solid #f3f4f6; 
+            padding: 0.5rem 0; 
+            width: 100%; 
+            height: 2.75rem; /* Explicit height to align inputs and dropdowns on the same line */
+            outline: none; 
+            transition: all 0.3s; 
+            font-weight: 600; 
+            background: transparent; 
+            font-size: 0.75rem;
+            color: #111827;
+            box-sizing: border-box;
+            display: block;
+        }
         .journal-input:focus { border-bottom-color: #6366f1; }
 
         .nav-pill { border-radius: 9999px; transition: all 0.3s; padding: 8px 24px; cursor: pointer; }
@@ -327,8 +342,11 @@
                         pattern: bi.pattern,
                         color: bi.color,
                         gloss: bi.gloss,
-                        thick: bi['thickness (mm)'], // Map exact column names containing spaces and parentheses
-                        size: bi['size (cm)'],       // Map exact column names containing spaces and parentheses
+                        // Fallback mechanisms ensure zero-crash operations on legacy null/empty values
+                        thick: (bi.thickness !== undefined && bi.thickness !== null) ? bi.thickness : bi['thickness (mm)'], 
+                        size: (bi.size !== undefined && bi.size !== null) ? bi.size : bi['size (cm)'],       
+                        color_family: bi.color_family || '',
+                        pattern_custom: bi.pattern_custom || '',
                         reqQty: bi.expected_qty,
                         movQty: bi.actual_qty,
                         note: bi.note
@@ -376,29 +394,104 @@
 
         function closeModal() { document.getElementById('modal').classList.add('hidden'); }
 
+        // Handles dynamic pattern text configuration inside the local column space
+        window.onPatternChange = function(selectEl, uniqueId) {
+            const customContainer = document.getElementById(`pattern-custom-container-${uniqueId}`);
+            const customInput = document.getElementById(`pattern-custom-input-${uniqueId}`);
+            if (selectEl.value === 'Other') {
+                customContainer.classList.remove('hidden');
+            } else {
+                customContainer.classList.add('hidden');
+                if (customInput) customInput.value = '';
+            }
+        };
+
         function addProductRow(data = {}) {
             const id = Math.random().toString(36).substr(2, 9);
-            const html = `<div class="product-item p-5 bg-white border border-gray-100 rounded-2xl" id="p-${id}">
-                <div class="flex justify-between items-center mb-4 text-[8px] font-black text-indigo-400 uppercase">Item Specs<button type="button" onclick="document.getElementById('p-${id}').remove()" class="text-rose-400">Remove</button></div>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    ${inp('Type', 'type', data.type)} ${inp('Pattern', 'pattern', data.pattern)}
-                    ${inp('Color', 'color', data.color)} ${inp('Gloss', 'gloss', data.gloss)}
-                    ${inp('Thickness (mm)', 'thick', data.thick)} ${inp('Size (cm)', 'size', data.size)}
-                    ${inp('Expected Qty', 'reqQty', data.reqQty || '', 'number')}
+            const isOtherSelected = data.pattern === 'Other';
+            
+            const html = `<div class="product-item p-8 bg-white border border-gray-100 rounded-[2.5rem] relative shadow-sm" id="p-${id}">
+                <!-- Symmetrical Remove Button placed absolutely in top right to prevent grid interference -->
+                <button type="button" onclick="document.getElementById('p-${id}').remove()" class="absolute top-8 right-8 text-[9px] font-black text-rose-400 hover:text-rose-600 uppercase tracking-widest transition-all">Remove</button>
+                
+                <div class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-8">Item Specs</div>
+                
+                <!-- Perfectly balanced CSS Grid representing symmetric grid dimensions -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-6">
+                    
+                    <!-- Row 1: Type | Pattern | Pantone Code | Color -->
+                    ${sel('Type', 'type', ['Classic', 'Nubuck', 'Botanica', 'Luxe'], data.type || '')}
+                    
+                    <div class="flex flex-col justify-end">
+                        ${sel('Pattern', 'pattern', ['Pebbled', 'Prada', 'Epsom', 'Grain Wood', 'Other'], data.pattern || '', `onchange="onPatternChange(this, '${id}')"`)}
+                        <!-- Dynamic sub-input nested natively inside column flow to safeguard grid symmetry -->
+                        <div id="pattern-custom-container-${id}" class="${isOtherSelected ? '' : 'hidden'} mt-4">
+                            ${inp('Custom Pattern', 'pattern_custom', data.pattern_custom || '', 'text', `id="pattern-custom-input-${id}" placeholder="Enter pattern name"`)}
+                        </div>
+                    </div>
+                    
+                    ${inp('Pantone Code', 'color', data.color || '', 'text', 'placeholder="e.g., Black 6 C"')}
+                    
+                    ${sel('Color', 'color_family', ['Red', 'Orange', 'Yellow', 'Green', 'Blue', 'Navy', 'Purple', 'Pink', 'White', 'Black', 'Grey', 'Cream', 'Brown'], data.color_family || '')}
+                    
+                    <!-- Row 2: Gloss | Thickness (mm) | Size (cm) | Expected Qty -->
+                    ${sel('Gloss', 'gloss', ['เงาพื้นฐาน', 'ด้าน'], data.gloss || '')}
+                    
+                    ${sel('Thickness (mm)', 'thick', ['0.6', '0.8', '1.0', '1.2', '1.6', '2.0'], data.thick || '')}
+                    
+                    ${sel('Size (cm)', 'size', ['60x100', '100x120'], data.size || '')}
+                    
+                    ${inp('Expected Qty', 'reqQty', data.reqQty || '', 'number', 'placeholder="0"')}
+                    
+                    <!-- Row 3: Note (Full Width) -->
+                    <div class="col-span-1 md:col-span-2 lg:col-span-4 mt-2">
+                        ${inp('Note', 'note', data.note || '', 'text', 'placeholder="Enter specification notes..."')}
+                    </div>
+                    
                     <input type="hidden" data-key="movQty" value="${data.movQty || 0}">
-                    <div class="col-span-2 md:col-span-4">${inp('Note', 'note', data.note)}</div>
-                </div></div>`;
+                </div>
+            </div>`;
             document.getElementById('product-list').insertAdjacentHTML('beforeend', html);
         }
 
-        function inp(l, k, v='', t='text') { return `<div><label class="text-[8px] font-black text-gray-300 uppercase block mb-1">${l}</label><input type="${t}" data-key="${k}" value="${v}" class="journal-input text-xs"></div>`; }
+        // Standardized input renderer assuring aligned structures and label configurations
+        function inp(l, k, v='', t='text', extra='') { 
+            return `<div class="flex flex-col justify-end">
+                <label class="text-[8px] font-black text-gray-300 uppercase block mb-1 tracking-widest">${l}</label>
+                <input type="${t}" data-key="${k}" value="${v}" ${extra} class="journal-input">
+            </div>`; 
+        }
+
+        // Standardized select renderer utilizing matching paddings, line indicators and chevrons
+        function sel(l, k, options, selectedVal='', extraAttrs='') {
+            const optionElems = options.map(opt => {
+                const isSel = String(opt) === String(selectedVal) ? 'selected' : '';
+                return `<option value="${opt}" ${isSel} class="bg-white text-gray-900">${opt}</option>`;
+            }).join('');
+            
+            return `<div class="flex flex-col justify-end">
+                <label class="text-[8px] font-black text-gray-300 uppercase block mb-1 tracking-widest">${l}</label>
+                <select data-key="${k}" ${extraAttrs} class="journal-input cursor-pointer pr-6 bg-transparent" style="appearance: none; background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right center; background-size: 0.7rem;">
+                    <option value="" class="bg-white text-gray-400">Select...</option>
+                    ${optionElems}
+                </select>
+            </div>`;
+        }
 
         async function handleSave(ev) {
             ev.preventDefault();
             const supabase = supabaseDb; // Local variable reference
             const id = document.getElementById('edit-id').value;
+            
+            // Map inputs and selects cleanly
             const prods = Array.from(document.querySelectorAll('.product-item')).map(row => {
-                const p = {}; row.querySelectorAll('input').forEach(i => p[i.dataset.key] = i.value); return p;
+                const p = {}; 
+                row.querySelectorAll('input, select').forEach(i => {
+                    if (i.dataset.key) {
+                        p[i.dataset.key] = i.value;
+                    }
+                }); 
+                return p;
             });
 
             const rawDate = document.getElementById('f-date').value;
@@ -441,15 +534,22 @@
                         throw clearErr;
                     }
 
-                    // Prepare items mapping exact column names with spaces/parentheses
+                    // Prepare items mapping both exact new columns and standard compatibility fields
                     const itemsPayload = prods.map(p => ({
                         batch_id: id,
                         type: p.type,
                         pattern: p.pattern,
                         color: p.color,
                         gloss: p.gloss,
+                        thickness: parseFloat(p.thick) || null,
+                        size: p.size,
+                        color_family: p.color_family || null,
+                        pattern_custom: p.pattern === 'Other' ? (p.pattern_custom || null) : null,
+                        
+                        // Compatibility write parameters:
                         'thickness (mm)': parseFloat(p.thick) || null,
                         'size (cm)': p.size,
+                        
                         expected_qty: parseFloat(p.reqQty) || 0,
                         actual_qty: parseFloat(p.movQty) || 0,
                         note: p.note
@@ -481,8 +581,15 @@
                         pattern: p.pattern,
                         color: p.color,
                         gloss: p.gloss,
+                        thickness: parseFloat(p.thick) || null,
+                        size: p.size,
+                        color_family: p.color_family || null,
+                        pattern_custom: p.pattern === 'Other' ? (p.pattern_custom || null) : null,
+                        
+                        // Compatibility write parameters:
                         'thickness (mm)': parseFloat(p.thick) || null,
                         'size (cm)': p.size,
+                        
                         expected_qty: parseFloat(p.reqQty) || 0,
                         actual_qty: parseFloat(p.movQty) || 0,
                         note: p.note
@@ -580,15 +687,27 @@
                         ${e.products.map((p, idx) => {
                             const pStat = getStatus(p.reqQty, p.movQty);
                             const perc = p.reqQty > 0 ? (Number(p.movQty) / Number(p.reqQty)) * 100 : 0;
-                            return `<div class="bg-gray-50/50 p-7 rounded-[2rem] border border-gray-100 flex flex-col">
-                                <div class="flex justify-between items-center mb-6 w-full">
-                                    <span class="status-badge status-${pStat.toLowerCase()}" style="font-size: 7px; padding: 2px 8px;">${pStat}</span>
-                                    <button onclick="openUpdateModal('${e.id}', ${idx})" class="flex items-center gap-1.5 text-[8px] font-bold text-gray-400 hover:text-gray-800 transition-all uppercase whitespace-nowrap">
-                                        <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                                        Record Actual
-                                    </button>
+                            const patternDisplay = p.pattern === 'Other' ? (p.pattern_custom || 'Other') : p.pattern;
+                            const formattedSize = p.size === '60x100' ? '60 × 100 cm' : (p.size === '100x120' ? '100 × 120 cm' : (p.size || 'N/A'));
+                            return `<div class="bg-gray-50/50 p-7 rounded-[2rem] border border-gray-100 flex flex-col justify-between">
+                                <div class="w-full">
+                                    <div class="flex justify-between items-center mb-6 w-full">
+                                        <span class="status-badge status-${pStat.toLowerCase()}" style="font-size: 7px; padding: 2px 8px;">${pStat}</span>
+                                        <button onclick="openUpdateModal('${e.id}', ${idx})" class="flex items-center gap-1.5 text-[8px] font-bold text-gray-400 hover:text-gray-800 transition-all uppercase whitespace-nowrap">
+                                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                            Record Actual
+                                        </button>
+                                    </div>
+                                    <p class="text-[14px] font-bold text-gray-900 mb-4 leading-tight">${p.type} ${p.color}</p>
+                                    
+                                    <div class="space-y-2 text-gray-600 text-[11px] mb-6 border-b border-gray-100 pb-4">
+                                        <div><span class="font-black text-gray-300 uppercase text-[7px] tracking-wider block">Pattern</span><span class="font-bold text-gray-800">${patternDisplay || 'N/A'}</span></div>
+                                        <div><span class="font-black text-gray-300 uppercase text-[7px] tracking-wider block">Thickness</span><span class="font-bold text-gray-800">${p.thick ? `${p.thick} mm` : 'N/A'}</span></div>
+                                        <div><span class="font-black text-gray-300 uppercase text-[7px] tracking-wider block">Size</span><span class="font-bold text-gray-800">${formattedSize}</span></div>
+                                        <div><span class="font-black text-gray-300 uppercase text-[7px] tracking-wider block">Gloss</span><span class="font-bold text-gray-800">${p.gloss || 'N/A'}</span></div>
+                                        ${p.color_family ? `<div><span class="font-black text-gray-300 uppercase text-[7px] tracking-wider block">Color Family</span><span class="font-bold text-gray-800">${p.color_family}</span></div>` : ''}
+                                    </div>
                                 </div>
-                                <p class="text-[14px] font-bold text-gray-900 mb-6 leading-tight">${p.type} ${p.color}</p>
                                 <div class="space-y-4">
                                     <div class="flex justify-between text-[9px] font-black uppercase">
                                         <span class="text-gray-300">Exp: <span class="text-gray-900">${p.reqQty}</span></span>
@@ -600,8 +719,8 @@
                                     <div class="flex justify-end"><span class="text-[8px] font-black text-gray-300">${Math.round(perc)}%</span></div>
                                     <div class="flex justify-between items-end pt-2">
                                         <div>
-                                            <p class="text-[8px] font-black text-gray-300 uppercase mb-1">Specs</p>
-                                            <p class="text-[14px] font-bold text-gray-800">${p.thick} mm / ${p.size} cm</p>
+                                            <p class="text-[8px] font-black text-gray-300 uppercase mb-1">Total Exp</p>
+                                            <p class="text-[14px] font-bold text-gray-800">${p.reqQty}</p>
                                         </div>
                                         <p class="text-xl font-black ${e.type === 'IN' ? 'text-emerald-600' : 'text-rose-600'}">${e.type==='IN'?'+':'-'}${p.movQty}</p>
                                     </div>
@@ -684,8 +803,24 @@
             }).join('');
         }
 
-        function getVariantKey(p) { return `${p.type}|${p.pattern}|${p.color}|${p.gloss}|${p.thick}|${p.size}`; }
-        function formatVariantKey(key) { return key.split('|').map((attr, i) => `<span class="inline-block bg-gray-50 text-gray-500 px-2 py-0.5 rounded-md text-[8px] font-bold mr-1 mb-1 border border-gray-100">${attr}${i===4?' mm':(i===5?' cm':'')}</span>`).join(''); }
+        // Generate dynamic key maps based on expanded parameters
+        function getVariantKey(p) { 
+            const patternStr = p.pattern === 'Other' ? (p.pattern_custom || 'Other') : p.pattern;
+            return `${p.type}|${patternStr}|${p.color}|${p.gloss}|${p.thick}|${p.size}`; 
+        }
+
+        function formatVariantKey(key) { 
+            return key.split('|').map((attr, i) => {
+                let label = attr;
+                if (i === 4 && attr) label = attr + ' mm';
+                if (i === 5 && attr) {
+                    if (attr === '60x100') label = '60 × 100 cm';
+                    else if (attr === '100x120') label = '100 × 120 cm';
+                    else label = attr;
+                }
+                return `<span class="inline-block bg-gray-50 text-gray-500 px-2 py-0.5 rounded-md text-[8px] font-bold mr-1 mb-1 border border-gray-100">${label}</span>`;
+            }).join(''); 
+        }
         
         async function deleteEntry(id) {
             if(confirm('Delete batch?')) { 
