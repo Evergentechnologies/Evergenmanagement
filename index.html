@@ -8,6 +8,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Supabase CDN Integration -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- SheetJS CDN Integration -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #ffffff; color: #111827; }
         
@@ -106,7 +108,9 @@
                 <div>
                     <h2 class="text-5xl font-black tracking-tighter text-gray-900 mb-2" id="view-title">Journal Entry</h2>
                 </div>
-                <div class="flex gap-3">
+                <!-- Action button area with newly integrated Import Excel utility -->
+                <div class="flex gap-3 flex-wrap">
+                    <button onclick="triggerExcelImport()" class="bg-slate-700 hover:bg-slate-800 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-100 transition-all">Import Excel</button>
                     <button onclick="openModal('IN')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 transition-all">+ Stock In</button>
                     <button onclick="openModal('OUT')" class="bg-rose-500 hover:bg-rose-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-rose-100 transition-all">+ Stock Out</button>
                 </div>
@@ -209,6 +213,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Hidden native file input element for Excel import -->
+    <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="hidden" onchange="handleExcelFile(event)">
 
     <script>
         // Supabase Client Initialization
@@ -710,7 +717,7 @@
                                             Record Actual
                                         </button>
                                     </div>
-                                    <p class="text-[14px] font-bold text-gray-900 mb-6 leading-tight">${p.type} ${p.color}</p>
+                                    <p class="text-[14px] font-bold text-gray-900 mb-4 leading-tight">${p.type} ${p.color}</p>
                                     
                                     <div class="space-y-2 text-gray-600 text-[11px] mb-6 border-b border-gray-100 pb-4">
                                         <div><span class="font-black text-gray-300 uppercase text-[7px] tracking-wider block">Pattern</span><span class="font-bold text-gray-800">${patternDisplay || 'N/A'}</span></div>
@@ -864,6 +871,66 @@
                     alert('Deletion failed: Unable to remove batch data.');
                 }
             }
+        }
+
+        // Trigger native file selection when clicking the styled "Import Excel" button
+        function triggerExcelImport() {
+            document.getElementById('excel-file-input').click();
+        }
+
+        // Parse chosen spread sheet and map column keys with exact header parameters
+        function handleExcelFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const data = evt.target.result;
+                    const workbook = XLSX.read(data, { type: 'binary' });
+                    
+                    // Identify target tab
+                    const targetSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[targetSheetName];
+                    
+                    // Translate rows to object entries
+                    const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+                    
+                    // Filter and assign variables matching database attributes
+                    const parsedRows = rawRows.map(row => {
+                        return {
+                            "Date": row["Date"] !== undefined ? row["Date"] : "",
+                            "Doc #": row["Doc #"] !== undefined ? row["Doc #"] : "",
+                            "Project": row["Project"] !== undefined ? row["Project"] : "",
+                            "Customer": row["Customer"] !== undefined ? row["Customer"] : "",
+                            "Type": row["Type"] !== undefined ? row["Type"] : "",
+                            "Pattern": row["Pattern"] !== undefined ? row["Pattern"] : "",
+                            "Pantone Code": row["Pantone Code"] !== undefined ? row["Pantone Code"] : "",
+                            "Color": row["Color"] !== undefined ? row["Color"] : "",
+                            "Gloss": row["Gloss"] !== undefined ? row["Gloss"] : "",
+                            "Thickness (mm)": row["Thickness (mm)"] !== undefined ? row["Thickness (mm)"] : "",
+                            "Size (cm)": row["Size (cm)"] !== undefined ? row["Size (cm)"] : "",
+                            "Expected Qty": row["Expected Qty"] !== undefined ? row["Expected Qty"] : "",
+                            "Note": row["Note"] !== undefined ? row["Note"] : ""
+                        };
+                    });
+
+                    // Log output records cleanly in the developer console
+                    console.log("=== Excel Import Parsed Rows ===");
+                    console.table(parsedRows);
+                    console.log(parsedRows);
+                    
+                    alert(`Excel file successfully parsed! ${parsedRows.length} rows have been printed to the browser console.`);
+                    
+                } catch(err) {
+                    console.error("Error reading or parsing Excel file:", err);
+                    alert("Failed to parse Excel file. See browser console for details.");
+                } finally {
+                    // Flush element value to allow importing identical file names successively
+                    e.target.value = "";
+                }
+            };
+            reader.readAsBinaryString(file);
         }
         
         checkAuth();
