@@ -416,22 +416,34 @@
                 
                 <div class="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-8">Item Specs</div>
                 
-                <!-- Perfectly balanced CSS Grid representing symmetric grid dimensions -->
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-6">
+                <!-- Perfectly balanced CSS Grid representing symmetric grid dimensions with items aligned to the top -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-6 items-start">
                     
-                    <!-- Row 1: Type | Pattern | Pantone Code | Color -->
+                    <!-- Column 1: Type -->
                     ${sel('Type', 'type', ['Classic', 'Nubuck', 'Botanica', 'Luxe'], data.type || '')}
                     
-                    <div class="flex flex-col justify-end">
-                        ${sel('Pattern', 'pattern', ['Pebbled', 'Prada', 'Epsom', 'Grain Wood', 'Other'], data.pattern || '', `onchange="onPatternChange(this, '${id}')"`)}
-                        <!-- Dynamic sub-input nested natively inside column flow to safeguard grid symmetry -->
+                    <!-- Column 2: Pattern (With nested Custom Pattern Wrapper inside same field container) -->
+                    <div class="flex flex-col justify-start">
+                        <label class="text-[8px] font-black text-gray-300 uppercase block mb-1 tracking-widest">Pattern</label>
+                        <select data-key="pattern" onchange="onPatternChange(this, '${id}')" class="journal-input cursor-pointer pr-6 bg-transparent" style="appearance: none; background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right center; background-size: 0.7rem;">
+                            <option value="" class="bg-white text-gray-400">Select...</option>
+                            ${['Pebbled', 'Prada', 'Epsom', 'Grain Wood', 'Other'].map(opt => {
+                                const isSel = String(opt) === String(data.pattern || '') ? 'selected' : '';
+                                return `<option value="${opt}" ${isSel} class="bg-white text-gray-900">${opt}</option>`;
+                            }).join('')}
+                        </select>
+
+                        <!-- Nested Custom Pattern container that displays inline under the dropdown without stretching/shifting neighbor elements -->
                         <div id="pattern-custom-container-${id}" class="${isOtherSelected ? '' : 'hidden'} mt-4">
-                            ${inp('Custom Pattern', 'pattern_custom', data.pattern_custom || '', 'text', `id="pattern-custom-input-${id}" placeholder="Enter pattern name"`)}
+                            <label class="text-[8px] font-black text-gray-300 uppercase block mb-1 tracking-widest">Custom Pattern</label>
+                            <input type="text" data-key="pattern_custom" id="pattern-custom-input-${id}" value="${data.pattern_custom || ''}" placeholder="Enter pattern name" class="journal-input">
                         </div>
                     </div>
                     
+                    <!-- Column 3: Pantone Code -->
                     ${inp('Pantone Code', 'color', data.color || '', 'text', 'placeholder="e.g., Black 6 C"')}
                     
+                    <!-- Column 4: Color -->
                     ${sel('Color', 'color_family', ['Red', 'Orange', 'Yellow', 'Green', 'Blue', 'Navy', 'Purple', 'Pink', 'White', 'Black', 'Grey', 'Cream', 'Brown'], data.color_family || '')}
                     
                     <!-- Row 2: Gloss | Thickness (mm) | Size (cm) | Expected Qty -->
@@ -456,7 +468,7 @@
 
         // Standardized input renderer assuring aligned structures and label configurations
         function inp(l, k, v='', t='text', extra='') { 
-            return `<div class="flex flex-col justify-end">
+            return `<div class="flex flex-col justify-start">
                 <label class="text-[8px] font-black text-gray-300 uppercase block mb-1 tracking-widest">${l}</label>
                 <input type="${t}" data-key="${k}" value="${v}" ${extra} class="journal-input">
             </div>`; 
@@ -469,7 +481,7 @@
                 return `<option value="${opt}" ${isSel} class="bg-white text-gray-900">${opt}</option>`;
             }).join('');
             
-            return `<div class="flex flex-col justify-end">
+            return `<div class="flex flex-col justify-start">
                 <label class="text-[8px] font-black text-gray-300 uppercase block mb-1 tracking-widest">${l}</label>
                 <select data-key="${k}" ${extraAttrs} class="journal-input cursor-pointer pr-6 bg-transparent" style="appearance: none; background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right center; background-size: 0.7rem;">
                     <option value="" class="bg-white text-gray-400">Select...</option>
@@ -614,7 +626,7 @@
         }
 
         function openUpdateModal(entryId, idx) {
-            const e = db.find(x => x.id == entryId);
+            const e = db.find(x => x.id == editId);
             const p = e.products[idx];
             context = { entryId, idx, exp: Number(p.reqQty) };
             document.getElementById('update-item-desc').innerText = `${p.type} ${p.color}`;
@@ -698,7 +710,7 @@
                                             Record Actual
                                         </button>
                                     </div>
-                                    <p class="text-[14px] font-bold text-gray-900 mb-4 leading-tight">${p.type} ${p.color}</p>
+                                    <p class="text-[14px] font-bold text-gray-900 mb-6 leading-tight">${p.type} ${p.color}</p>
                                     
                                     <div class="space-y-2 text-gray-600 text-[11px] mb-6 border-b border-gray-100 pb-4">
                                         <div><span class="font-black text-gray-300 uppercase text-[7px] tracking-wider block">Pattern</span><span class="font-bold text-gray-800">${patternDisplay || 'N/A'}</span></div>
