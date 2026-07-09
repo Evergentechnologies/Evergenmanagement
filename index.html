@@ -108,7 +108,7 @@
                 <div>
                     <h2 class="text-5xl font-black tracking-tighter text-gray-900 mb-2" id="view-title">Journal Entry</h2>
                 </div>
-                <!-- Action button area with Excel Import trigger -->
+                <!-- Action button area with Excel Import utility -->
                 <div class="flex gap-3 flex-wrap">
                     <button onclick="triggerExcelImport()" class="bg-slate-700 hover:bg-slate-800 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-100 transition-all">Import Excel</button>
                     <button onclick="openModal('IN')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 transition-all">+ Stock In</button>
@@ -793,9 +793,26 @@
                 const mv = Number(p.movQty), rm = Math.max(0, Number(p.reqQty)-mv);
                 if(e.type==='IN') { stats[k].cin+=mv; stats[k].pin+=rm; } else { stats[k].cout+=mv; stats[k].pout+=rm; }
             }));
+            
+            // Map calculated rows to keep structures accessible for sorting
+            const entries = Object.entries(stats).map(([k, s]) => {
+                const cur = s.cin-s.cout;
+                const av = cur-s.pout+s.pin;
+                return { k, s, cur, av };
+            });
+
+            // Perform conditional partition sort: push Available <= 0 entries to the bottom stably
+            entries.sort((a, b) => {
+                const aIsZero = a.av <= 0;
+                const bIsZero = b.av <= 0;
+                
+                if (aIsZero && !bIsZero) return 1;  // Move 'a' to bottom
+                if (!aIsZero && bIsZero) return -1; // Keep 'a' on top
+                return 0;                           // Preserve stable original relative order
+            });
+
             const tbody = document.getElementById('variant-movement-table');
-            tbody.innerHTML = Object.entries(stats).map(([k, s]) => {
-                const cur = s.cin-s.cout, av = cur-s.pout+s.pin;
+            tbody.innerHTML = entries.map(({ k, s, cur, av }) => {
                 return `<tr class="group"><td class="py-4 pr-4 border-b border-gray-50 text-[11px] font-bold">${formatVariantKey(k)}</td><td class="py-4 px-2 text-emerald-600 font-bold border-b border-gray-50 text-center">${s.cin}</td><td class="py-4 px-2 text-rose-600 font-bold border-b border-gray-100 text-center">${s.cout}</td><td class="py-4 px-2 text-emerald-500 opacity-40 font-bold border-b border-gray-50 text-center">${s.pin}</td><td class="py-4 px-2 text-rose-500 opacity-40 font-bold border-b border-gray-50 text-center">${s.pout}</td><td class="py-4 px-4 bg-slate-50/80 font-black text-gray-900 border-b border-slate-100 text-center">${cur}</td><td class="py-4 px-4 bg-indigo-50/50 font-black text-indigo-600 border-b border-indigo-100 text-center">${av}</td></tr>`
             }).join('');
         }
