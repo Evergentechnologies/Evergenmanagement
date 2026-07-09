@@ -901,6 +901,7 @@
                         return {
                             "Date": row["Date"] !== undefined ? row["Date"] : "",
                             "Doc #": row["Doc #"] !== undefined ? row["Doc #"] : "",
+                            "Movement Type": row["Movement Type"] !== undefined ? row["Movement Type"] : "",
                             "Project": row["Project"] !== undefined ? row["Project"] : "",
                             "Customer": row["Customer"] !== undefined ? row["Customer"] : "",
                             "Type": row["Type"] !== undefined ? row["Type"] : "",
@@ -915,7 +916,7 @@
                         };
                     });
 
-                    // Trigger Supabase bulk creation transaction pipeline
+                    // Trigger Supabase bulk creation transaction pipeline with structural validations
                     importExcelToSupabase(parsedRows);
                     
                 } catch(err) {
@@ -949,25 +950,57 @@
             return new Date().toISOString();
         }
 
-        // Group rows in Excel and upload transaction records directly to Supabase central tables
+        // Validate data formats, group lines into correct transactional boundaries, and save records sequentially into Supabase
         async function importExcelToSupabase(parsedRows) {
             const supabase = supabaseDb;
             
-            // Group raw lines by shared metadata (Date + Doc # + Project + Customer) to preserve database integrity
+            // 1. Validate each row's Movement Type strictly before proceeding
+            for (let idx = 0; idx < parsedRows.length; idx++) {
+                const row = parsedRows[idx];
+                const dStr = row["Date"] ? String(row["Date"]).trim() : "";
+                const docStr = row["Doc #"] ? String(row["Doc #"]).trim() : "";
+                const mType = row["Movement Type"] ? String(row["Movement Type"]).trim() : "";
+                const projStr = row["Project"] ? String(row["Project"]).trim() : "";
+                const custStr = row["Customer"] ? String(row["Customer"]).trim() : "";
+                
+                // Skip trailing blank spreadsheet lines gracefully
+                if (!dStr && !docStr && !mType && !projStr && !custStr) {
+                    continue; 
+                }
+
+                // If values are missing or misaligned, trigger early validation alerts pointing directly to Excel row coordinates
+                if (!mType) {
+                    alert(`Import Aborted! Excel Row ${idx + 2} is missing the required "Movement Type" column value.`);
+                    return;
+                }
+
+                if (mType !== "Stock In" && mType !== "Stock Out") {
+                    alert(`Import Aborted! Excel Row ${idx + 2} contains an invalid "Movement Type" value: "${mType}".\nAllowed values are exactly "Stock In" or "Stock Out".`);
+                    return;
+                }
+            }
+
+            // 2. Group raw lines by shared transactional headers (Date + Doc # + Movement Type + Project + Customer) to preserve database integrity
             const batchesMap = {};
             parsedRows.forEach(row => {
                 const dStr = row["Date"] ? String(row["Date"]).trim() : "";
                 const docStr = row["Doc #"] ? String(row["Doc #"]).trim() : "";
+                const mType = row["Movement Type"] ? String(row["Movement Type"]).trim() : "";
                 const projStr = row["Project"] ? String(row["Project"]).trim() : "";
                 const custStr = row["Customer"] ? String(row["Customer"]).trim() : "";
                 
-                if (!dStr && !docStr && !projStr && !custStr) return; // Skip complete blank rows
+                if (!dStr && !docStr && !mType && !projStr && !custStr) return; // Skip trailing blank rows
                 
-                const groupKey = `${dStr}|${docStr}|${projStr}|${custStr}`;
+                // Translate readable Stock types into database codes 'IN' or 'OUT'
+                const movement_type = mType === "Stock In" ? "IN" : "OUT";
+
+                // Group using movement_type to isolate Stock In and Stock Out records on matching sheets
+                const groupKey = `${dStr}|${docStr}|${movement_type}|${projStr}|${custStr}`;
                 if (!batchesMap[groupKey]) {
                     batchesMap[groupKey] = {
                         date: dStr,
                         doc_no: docStr,
+                        movement_type: movement_type,
                         project: projStr,
                         customer: custStr,
                         items: []
@@ -978,7 +1011,7 @@
 
             const batchGroups = Object.values(batchesMap);
             if (batchGroups.length === 0) {
-                alert("The selected spreadsheet does not contain any valid rows with batch parameters.");
+                alert("The selected spreadsheet does not contain any valid rows to import.");
                 return;
             }
 
@@ -986,12 +1019,12 @@
             let insertedItemsCount = 0;
 
             try {
-                // Loop sequentially through each parsed block to avoid sequence collision
+                // Loop sequentially through grouped records
                 for (const group of batchGroups) {
                     const dbFormattedDate = parseExcelDate(group.date);
                     
                     const batchPayload = {
-                        movement_type: "IN", // Excel imported records default to INFLOW stock operations
+                        movement_type: group.movement_type, // Map validated stock flow value
                         document_no: group.doc_no,
                         project: group.project,
                         customer: group.customer,
