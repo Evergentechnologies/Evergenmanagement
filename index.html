@@ -108,7 +108,7 @@
                 <div>
                     <h2 class="text-5xl font-black tracking-tighter text-gray-900 mb-2" id="view-title">Journal Entry</h2>
                 </div>
-                <!-- Action button area with Excel Import utility -->
+                <!-- Action button area with Excel Import trigger -->
                 <div class="flex gap-3 flex-wrap">
                     <button onclick="triggerExcelImport()" class="bg-slate-700 hover:bg-slate-800 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-100 transition-all">Import Excel</button>
                     <button onclick="openModal('IN')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 transition-all">+ Stock In</button>
@@ -633,7 +633,7 @@
         }
 
         function openUpdateModal(entryId, idx) {
-            const e = db.find(x => x.id == entryId);
+            const e = db.find(x => x.id == editId);
             const p = e.products[idx];
             context = { entryId, idx, exp: Number(p.reqQty) };
             document.getElementById('update-item-desc').innerText = `${p.type} ${p.color}`;
@@ -801,15 +801,8 @@
                 return { k, s, cur, av };
             });
 
-            // Perform conditional partition sort: push Available <= 0 entries to the bottom stably
-            entries.sort((a, b) => {
-                const aIsZero = a.av <= 0;
-                const bIsZero = b.av <= 0;
-                
-                if (aIsZero && !bIsZero) return 1;  // Move 'a' to bottom
-                if (!aIsZero && bIsZero) return -1; // Keep 'a' on top
-                return 0;                           // Preserve stable original relative order
-            });
+            // Sort Variant Rows descending by Available quantity ("av") from highest to lowest
+            entries.sort((a, b) => b.av - a.av);
 
             const tbody = document.getElementById('variant-movement-table');
             tbody.innerHTML = entries.map(({ k, s, cur, av }) => {
@@ -830,12 +823,19 @@
                     else { stats[k].cout+=mv; stats[k].pout+=rm; mcout+=mv; mpout+=rm; }
                 }));
                 const max = Math.max(mcin+mpin, mcout+mpout, 1);
+                
+                // Map monthly structures and sort by Net Actual descending (highest to lowest, including negative values)
+                const sortedMonthlyStats = Object.entries(stats).map(([k, s]) => {
+                    const netActual = s.cin - s.cout;
+                    return { k, s, netActual };
+                }).sort((a, b) => b.netActual - a.netActual);
+
                 return `<div class="bg-gray-50 p-6 rounded-[2rem] space-y-4"><div class="flex justify-between items-center"><h4 class="text-lg font-black text-indigo-600 uppercase tracking-tighter">${new Date(m + '-02').toLocaleString('default', {month:'long', year:'numeric'})}</h4>
                     <div class="h-12 w-24 flex items-end gap-1 bg-white/50 rounded-xl p-1 border border-white">
                         <div class="flex-1 flex flex-col justify-end h-full"><div class="bg-emerald-500 opacity-50 w-full" style="height:${(mpin/max)*100}%"></div><div class="bg-emerald-500 w-full" style="height:${(mcin/max)*100}%"></div></div>
                         <div class="flex-1 flex flex-col justify-end h-full"><div class="bg-rose-500 w-full" style="height:${(mcout/max)*100}%"></div><div class="bg-rose-500 opacity-50 w-full" style="height:${(mpout/max)*100}%"></div></div>
                     </div></div>
-                    <div class="bg-white rounded-xl overflow-hidden shadow-sm"><table class="w-full text-left text-[10px] border-collapse"><thead class="bg-gray-100"><tr><th class="p-3 font-black">Variant</th><th class="p-3 text-emerald-600">In (Act/Rem)</th><th class="p-3 text-rose-600">Out (Act/Rem)</th><th class="p-3 font-black">Net Actual</th></tr></thead><tbody class="divide-y divide-gray-50">${Object.entries(stats).map(([k, s]) => `<tr><td class="p-3 font-bold text-gray-700">${formatVariantKey(k)}</td><td class="p-3"><span class="text-emerald-600 font-bold">+${s.cin}</span> <span class="text-gray-300">+${s.pin}</span></td><td class="p-3"><span class="text-rose-600 font-bold">-${s.cout}</span> <span class="text-gray-300">-${s.pout}</span></td><td class="p-3 font-black text-gray-900">${s.cin-s.cout}</td></tr>`).join('')}</tbody></table></div></div>`
+                    <div class="bg-white rounded-xl overflow-hidden shadow-sm"><table class="w-full text-left text-[10px] border-collapse"><thead class="bg-gray-100"><tr><th class="p-3 font-black">Variant</th><th class="p-3 text-emerald-600">In (Act/Rem)</th><th class="p-3 text-rose-600">Out (Act/Rem)</th><th class="p-3 font-black">Net Actual</th></tr></thead><tbody class="divide-y divide-gray-50">${sortedMonthlyStats.map(({ k, s, netActual }) => `<tr><td class="p-3 font-bold text-gray-700">${formatVariantKey(k)}</td><td class="p-3"><span class="text-emerald-600 font-bold">+${s.cin}</span> <span class="text-gray-300">+${s.pin}</span></td><td class="p-3"><span class="text-rose-600 font-bold">-${s.cout}</span> <span class="text-gray-300">-${s.pout}</span></td><td class="p-3 font-black text-gray-900">${netActual}</td></tr>`).join('')}</tbody></table></div></div>`
             }).join('');
         }
 
