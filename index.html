@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Evergen Management | Stock Journal</title>
+    <title>Evergen Technologies Inventory Management System | Stock Journal</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Supabase CDN Integration -->
@@ -69,7 +69,7 @@
     <div id="login-screen" class="fixed inset-0 z-[200] bg-gray-50 flex items-center justify-center p-6 hidden">
         <div class="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl p-10 border border-gray-100">
             <div class="text-center mb-10">
-                <h1 class="text-2xl font-black tracking-tighter uppercase mb-2">Evergen Management</h1>
+                <h1 class="text-xl md:text-2xl font-black tracking-tighter uppercase mb-2 leading-tight">Evergen Technologies Inventory Management System</h1>
                 <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Inventory Management System</p>
             </div>
             <form onsubmit="handleLogin(event)" class="space-y-6">
@@ -90,9 +90,18 @@
     <!-- MAIN APP WRAPPER -->
     <div id="main-app" class="hidden">
         <nav class="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100">
-            <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-                <h1 class="text-2xl font-black tracking-tighter uppercase leading-none">Evergen Management</h1>
-                <div class="flex items-center gap-6">
+            <div class="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <!-- Two-Line Typography Refactored Brand Header -->
+                <div class="flex flex-col max-w-[680px] text-left">
+                    <h1 class="text-2xl sm:text-3xl md:text-[46px] lg:text-[48px] font-[800] tracking-[-0.02em] text-gray-900 uppercase leading-[1.05]">
+                        EVERGEN TECHNOLOGIES
+                    </h1>
+                    <span class="text-base sm:text-lg md:text-[28px] lg:text-[30px] font-[600] text-gray-500 mt-[6px] leading-[1.1]">
+                        Inventory Management System
+                    </span>
+                </div>
+                <!-- Navigation remains exactly in place -->
+                <div class="flex items-center gap-6 shrink-0 self-end md:self-auto">
                     <div class="bg-gray-100 p-1 rounded-full flex gap-1">
                         <div onclick="showView('journal')" id="nav-journal" class="nav-pill nav-active text-[10px] font-black uppercase tracking-widest">Logbook</div>
                         <div onclick="showView('dashboard')" id="nav-dashboard" class="nav-pill text-gray-400 text-[10px] font-black uppercase tracking-widest">Analytics</div>
@@ -102,7 +111,8 @@
             </div>
         </nav>
 
-        <main class="max-w-7xl mx-auto px-6 pt-32 pb-20">
+        <!-- Adjusted content padding top (pt-[240px] md:pt-[180px]) to balance layout without altering inner structures -->
+        <main class="max-w-7xl mx-auto px-6 pt-[240px] md:pt-[180px] pb-20">
             <div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-8">
                 <div>
                     <h2 class="text-5xl font-black tracking-tighter text-gray-900 mb-2" id="view-title">Journal Entry</h2>
@@ -888,6 +898,7 @@
             }
         }
 
+        // Dynamic File Dialog Trigger
         function triggerExcelImport() {
             const role = getCurrentRole();
             if (role === 'founder') {
@@ -1086,4 +1097,3 @@
     </script>
 </body>
 </html>
-
