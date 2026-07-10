@@ -91,7 +91,7 @@
     <div id="main-app" class="hidden">
         <nav class="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-gray-100">
             <div class="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <!-- Two-Line Typography Refactored Brand Header -->
+                <!-- Two-Line Typography Brand Header -->
                 <div class="flex flex-col max-w-[680px] text-left">
                     <h1 class="text-2xl sm:text-3xl md:text-[46px] lg:text-[48px] font-[800] tracking-[-0.02em] text-gray-900 uppercase leading-[1.05]">
                         EVERGEN TECHNOLOGIES
@@ -111,7 +111,6 @@
             </div>
         </nav>
 
-        <!-- Adjusted content padding top (pt-[240px] md:pt-[180px]) to balance layout without altering inner structures -->
         <main class="max-w-7xl mx-auto px-6 pt-[240px] md:pt-[180px] pb-20">
             <div class="flex flex-col md:flex-row justify-between items-end mb-12 gap-8">
                 <div>
@@ -119,6 +118,8 @@
                 </div>
                 <div class="flex gap-3 flex-wrap">
                     <button id="import-excel-btn" onclick="triggerExcelImport()" class="bg-slate-700 hover:bg-slate-800 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-100 transition-all">Import Excel</button>
+                    <!-- Export Excel Button matching the look and feel of the original layout -->
+                    <button id="export-excel-btn" onclick="exportToExcel()" class="bg-slate-700 hover:bg-slate-800 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-100 transition-all">Export Excel</button>
                     <button id="btn-stock-in" onclick="openModal('IN')" class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 transition-all">+ Stock In</button>
                     <button id="btn-stock-out" onclick="openModal('OUT')" class="bg-rose-500 hover:bg-rose-600 text-white px-8 py-4 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-rose-100 transition-all">+ Stock Out</button>
                 </div>
@@ -1091,6 +1092,146 @@
                 console.error("Spreadsheet save transaction failure:", err);
                 alert("Import failed during database writes: " + (err.message || JSON.stringify(err)));
             }
+        }
+        
+        // Extended Multi-Sheet Dynamic Excel Exporter
+        function exportToExcel() {
+            const dateStr = new Date().toISOString().substring(0, 10);
+            
+            // ==========================================
+            // SHEET 1: JOURNAL ENTRIES (KEEP UNCHANGED)
+            // ==========================================
+            const headers1 = ['Date', 'Doc #', 'Movement Type', 'Project', 'Customer', 'Type', 'Pattern', 'Pantone Code', 'Color Family', 'Gloss', 'Thickness (mm)', 'Size (cm)', 'Expected Qty', 'Actual Qty', 'Status', 'Note'];
+            const dataRows1 = [];
+            db.forEach(batch => {
+                batch.products.forEach(p => {
+                    const patternDisplay = p.pattern === 'Other' ? (p.pattern_custom || 'Other') : p.pattern;
+                    dataRows1.push([
+                        batch.date,
+                        batch.doc,
+                        batch.type === 'IN' ? 'Stock In' : 'Stock Out',
+                        batch.project,
+                        batch.customer,
+                        p.type,
+                        patternDisplay,
+                        p.color,
+                        p.color_family,
+                        p.gloss,
+                        p.thick,
+                        p.size,
+                        Number(p.reqQty || 0),
+                        Number(p.movQty || 0),
+                        getStatus(p.reqQty, p.movQty),
+                        p.note || ''
+                    ]);
+                });
+            });
+
+            const wb = XLSX.utils.book_new();
+            const ws1 = XLSX.utils.aoa_to_sheet([headers1, ...dataRows1]);
+            
+            // Set Auto-fit columns width securely for Sheet 1
+            const maxLens1 = headers1.map((h, i) => Math.max(h.length, ...dataRows1.map(row => String(row[i] || '').length)));
+            ws1['!cols'] = maxLens1.map(len => ({ wch: len + 3 }));
+            XLSX.utils.book_append_sheet(wb, ws1, "Journal Entries");
+
+            // ==========================================
+            // SHEET 2: DASHBOARD SUMMARY (KPI NUMBERS)
+            // ==========================================
+            let cin = 0, cout = 0, pin = 0, pout = 0;
+            db.forEach(e => e.products.forEach(p => {
+                const m = Number(p.movQty || 0), r = Math.max(0, Number(p.reqQty) - m);
+                if (e.type === 'IN') { cin += m; pin += r; } else { cout += m; pout += r; }
+            }));
+            const curr = cin - cout;
+            const avail = curr - pout + pin;
+
+            const headers2 = ["Dashboard KPI Metric", "Value"];
+            const dataRows2 = [
+                ["Completed Inflow (Comp In)", cin],
+                ["Completed Outflow (Comp Out)", cout],
+                ["Pending Inflow (Pend In)", pin],
+                ["Pending Outflow (Pend Out)", pout],
+                ["Current Stock", curr],
+                ["Available Stock", avail]
+            ];
+            const ws2 = XLSX.utils.aoa_to_sheet([headers2, ...dataRows2]);
+            ws2['!cols'] = [{ wch: 32 }, { wch: 15 }];
+            XLSX.utils.book_append_sheet(wb, ws2, "Dashboard Summary");
+
+            // ==========================================
+            // SHEET 3: CHART DATA (UNDERLYING GRAPH DATA)
+            // ==========================================
+            const chartDataRows = [];
+
+            // Sub-Section A: Monthly Stock Movement Trends
+            chartDataRows.push(["SECTION 1: MONTHLY STOCK MOVEMENT TRENDS"]);
+            chartDataRows.push(["Month", "Actual In", "Pending In", "Actual Out", "Pending Out"]);
+            
+            const months = [...new Set(db.filter(e => e.date).map(e => e.date.substring(0, 7)))].sort();
+            months.forEach(m => {
+                let mcin = 0, mcout = 0, mpin = 0, mpout = 0;
+                db.filter(e => e.date && e.date.substring(0, 7) === m).forEach(e => e.products.forEach(p => {
+                    const mv = Number(p.movQty), rm = Math.max(0, Number(p.reqQty)-mv);
+                    if(e.type === 'IN') { mcin += mv; mpin += rm; } else { mcout += mv; mpout += rm; }
+                }));
+                chartDataRows.push([m, mcin, mpin, mcout, mpout]);
+            });
+
+            // Insert spacing gaps
+            chartDataRows.push([]);
+            chartDataRows.push([]);
+
+            // Sub-Section B: Master Product Variant Movements
+            chartDataRows.push(["SECTION 2: PRODUCT VARIANT MOVEMENT DATA"]);
+            chartDataRows.push(["Type", "Pattern", "Pantone Code", "Gloss", "Thickness (mm)", "Size (cm)", "Comp In", "Comp Out", "Pend In", "Pend Out", "Curr Stock", "Available"]);
+
+            const stats = {};
+            db.forEach(e => e.products.forEach(p => {
+                const k = getVariantKey(p); if(!stats[k]) stats[k] = { cin:0, cout:0, pin:0, pout:0 };
+                const mv = Number(p.movQty), rm = Math.max(0, Number(p.reqQty)-mv);
+                if(e.type === 'IN') { stats[k].cin += mv; stats[k].pin += rm; } else { stats[k].cout += mv; stats[k].pout += rm; }
+            }));
+            const entries = Object.entries(stats).map(([k, s]) => {
+                const cur = s.cin - s.cout;
+                const av = cur - s.pout + s.pin;
+                return { k, s, cur, av };
+            });
+            entries.sort((a, b) => b.av - a.av);
+
+            entries.forEach(({ k, s, cur, av }) => {
+                const parts = k.split('|');
+                chartDataRows.push([
+                    parts[0] || '',
+                    parts[1] || '',
+                    parts[2] || '',
+                    parts[3] || '',
+                    parts[4] ? parseFloat(parts[4]) : '',
+                    parts[5] || '',
+                    s.cin,
+                    s.cout,
+                    s.pin,
+                    s.pout,
+                    cur,
+                    av
+                ]);
+            });
+
+            const ws3 = XLSX.utils.aoa_to_sheet(chartDataRows);
+            const maxLens3 = [];
+            chartDataRows.forEach(row => {
+                row.forEach((val, colIdx) => {
+                    const strLen = String(val || '').length;
+                    if (!maxLens3[colIdx] || strLen > maxLens3[colIdx]) {
+                        maxLens3[colIdx] = strLen;
+                    }
+                });
+            });
+            ws3['!cols'] = maxLens3.map(len => ({ wch: Math.min(len + 3, 50) }));
+            XLSX.utils.book_append_sheet(wb, ws3, "Chart Data");
+
+            // Write output file
+            XLSX.writeFile(wb, `Evergen_Inventory_Report_${dateStr}.xlsx`);
         }
         
         checkAuth();
